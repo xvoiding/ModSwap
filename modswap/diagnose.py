@@ -47,6 +47,23 @@ def render(m, atl, uv2, axis_view='front', px=640):
     return Image.fromarray(img)
 
 
+ORIENT = [('as is', lambda u, v: (u, v)), ('flipped vertically', lambda u, v: (u, 1 - v)), ('flipped horizontally', lambda u, v: (1 - u, v)), ('turned 180', lambda u, v: (1 - u, 1 - v)),
+          ('axes swapped', lambda u, v: (v, u)), ('turned 90', lambda u, v: (1 - v, u)), ('turned 270', lambda u, v: (v, 1 - u)), ('swapped + turned 180', lambda u, v: (1 - v, 1 - u))]
+
+
+def orientation_sheet(m, imgs, out, px=420):
+    """the model drawn with its picture in each of the 8 orientations (a picture that is flipped / turned relative to its uvs is the commonest reason a model looks 'scrambled'), on one sheet"""
+    from PIL import ImageFont
+    tiles = []
+    for name, f in ORIENT:
+        uv = m.uv.copy(); u, v = f(uv[:, 0], uv[:, 1]); uv[:, 0], uv[:, 1] = u, v
+        atl, cells = atlas.pack(imgs, uv, m.vert_mat, size=1024); uv2 = atlas.remap_uv(uv, m.vert_mat, cells, 1024)
+        t = render(m, atl, uv2, 'front', px).convert('RGB'); d = ImageDraw.Draw(t); d.rectangle([0, 0, px, 22], fill=(0, 0, 0)); d.text((6, 5), '%d: %s' % (len(tiles) + 1, name), fill=(255, 255, 0)); tiles.append(t)
+    sheet = Image.new('RGB', (px * 4, px * 2))
+    for i, t in enumerate(tiles): sheet.paste(t, ((i % 4) * px, (i // 4) * px))
+    sheet.save(os.path.join(out, 'orientations.png'))
+
+
 def flatten(folder):
     """copy the model and every picture of a folder tree side by side into one temp folder, like dropping them all into the app"""
     import shutil, tempfile
@@ -98,11 +115,14 @@ def run(model_path, texture_dir=None, out=None, log=print):
         say('atlas %d: %d of %d vertices find a different colour than their own picture (0 is right)' % (size, bad_total, len(m.pos))); worst = max(worst, bad_total)
         if size == 1024:
             for view in ('front', 'back'): render(m, atl, uv2, view).save(os.path.join(out, 'preview_%s.png' % view))
+            try: orientation_sheet(m, imgs, out)
+            except Exception as e: say('(orientation sheet failed: %r)' % (e,))
             pic = Image.fromarray(atl).convert('RGB'); d = ImageDraw.Draw(pic)
             for i, c in enumerate(cells):
                 if c is not None: d.rectangle([c.x, c.y, c.x + c.w, c.y + c.h], outline=(255, 0, 255)); d.text((c.x + 3, c.y + 3), str(i), fill=(255, 255, 0))
             pic.save(os.path.join(out, 'atlas_1024.png'))
-    say(); say('verdict: ' + ('the atlas is consistent with the model; if the viewer still looks wrong the cause is elsewhere (send this report and a screenshot)' if worst == 0 and mixed == 0 else 'the model / atlas disagree: this is the bug'))
+    border = max(2, int(0.02 * len(m.pos)))                                                              # (a few vertices on island borders blend two colours when the picture is shrunk: normal)
+    say(); say('verdict: ' + ('the atlas is consistent with the model; if the viewer still looks wrong the cause is elsewhere. Look at orientations.png: if one tile looks right, your picture is turned relative to its uvs.' if worst <= border and mixed == 0 else 'the model / atlas disagree: this is the bug'))
     open(os.path.join(out, 'diagnose_report.txt'), 'w', encoding='utf-8').write('\n'.join(L)); return worst, mixed
 
 
