@@ -69,6 +69,7 @@ def cmd_report(a):
             out.append('LOD look table (u16 start,count x6 per row): ' + ' | '.join(' '.join('%d,%d' % struct.unpack_from('<HH', lod, 4 * (r + k)) for k in range(6)) for r in (0, 8, 16)))
             out.append('mesh slots (index: material, triangles, vertices):')
             out.append('  ' + '  '.join('%d:m%d/%dt/%dv' % (k, m.material, m.index_count // 3, m.vertex_count) for k, m in enumerate(ms) if m.vertex_count))
+            bs = orig.section(M.TAG_BUILT); out.append('built section u32: ' + ' '.join('%x' % x for x in struct.unpack('<%dI' % (len(bs) // 4), bs))); out.append('mesh flags (first 30): ' + ' '.join('%d:%x' % (k, m.flags) for k, m in enumerate(ms[:30])))
             off, size = orig.sections[MT.TAG_MATERIAL_LIST]; out.append('material list section: offset %d size %d; first 192 bytes after it: %s' % (off, size, raw[off + M.DAT1_AT:off + M.DAT1_AT + 192].hex()))
             paths = sorted(set(w.decode('latin1') for w in re.findall(rb'[\x20-\x7e]{8,200}\.(?:model|actor|skeleton|material|anim)', raw)))
             if paths: out.append('path-like strings inside the model: ' + ', '.join(paths[:40]))

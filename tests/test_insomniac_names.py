@@ -33,3 +33,17 @@ def test_picker_prefers_the_plain_material_but_no_longer_gives_up():
     assert MT.pick_single_texture_slot([eyes], 'punk') is None                                   # only shared textures: never re-skin those
     k = 'characters/npc/npc_kingpin/textures/npc_kingpin_%s.texture'
     assert MT.pick_single_texture_slot([row(0, 'x/legacy_char_basic_normal_gloss.mg', [k % 'suit_c', k % 'suit_n', k % 'suit_g'], 5000)], 'npc_kingpin') == 0
+
+
+def test_material_ids_from_the_models_own_path_strings_match_the_record_scan():
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from test_insomniac_cli import SAMPLES
+    from modswap.insomniac import model as M
+    f = os.path.join(SAMPLES, 'BF45D48B5314EC76.bin'); tf = os.path.join(SAMPLES, '..', 'toc_current')
+    if not (os.path.isfile(f) and os.path.isfile(tf)): print('   (no real samples: skipped)'); return
+    t = Toc(open(tf, 'rb').read()); m = M.Model(open(f, 'rb').read())
+    assert MT.material_ids(m, t) == MT._scan_ids(m, t) and len(MT.material_ids(m, t)) == 11 and MT._path_strings(m)[3].endswith('hero_spiderman_classic_rubber.material')
+
+
+def test_accessory_words_are_whole_words():
+    assert MT._accessory('webshooters_c.texture') and MT._accessory('shoe_n.texture') and MT._accessory('fearitself_eyesframe_c') and not MT._accessory('white_damagemask_g.texture') and not MT._accessory('body_c.texture')

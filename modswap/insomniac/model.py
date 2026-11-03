@@ -333,6 +333,7 @@ def build_model(model, parts, lod_distance=4096.0):
     struct.pack_into('<7f', built, 0, *c, r, *((hi - lo) / 2))
     for i in range(5): struct.pack_into('<f', built, 0x34 + 4 * i, lod_distance)
     struct.pack_into('<II', built, 0x64, len(idx_all), N)
+    struct.pack_into('<f', built, 0x2C, 1.0 / POS_SCALE); struct.pack_into('<I', built, 0x30, 0)        # the vertex writer always uses metres*4096 / uv*16384: say so (a suit may have been built with other scales)
     return rebuild(model, {
         TAG_INDEX: encode_index(idx_all), TAG_STD_VERT: encode_std(pos_units, tw, t2, uv_units),
         TAG_UV1: np.clip(np.rint(uv1 * 32768.0), -32768, 32767).astype('<i2').tobytes(), TAG_COL: col.astype('<u4').tobytes(),
