@@ -87,6 +87,41 @@ class Project:
             if need: by_pak.setdefault(pk, []).extend(need)
         for pk, inc in by_pak.items(): self.backend.unpack(pk, self.orig, inc)
 
+    # ------------------------------------------------------------ mesh layout of the game (shared by its characters)
+    def _format_of(self, rels):
+        for rel in rels:
+            t0 = os.path.join(self.orig, rel)
+            if not (os.path.exists(t0 + '.uasset') and os.path.exists(t0 + '.uexp')): continue
+            try: fmt = detect_sk_format(open(t0 + '.uasset', 'rb').read(), open(t0 + '.uexp', 'rb').read())
+            except Exception: fmt = None
+            if fmt: return fmt
+        return None
+
+    def _format_file(self): return os.path.join(self.dir, 'format.json')
+
+    def _cached_format(self):
+        try:
+            d = json.load(open(self._format_file()))
+            return d['fmt'] if isinstance(d.get('fmt'), dict) else None
+        except Exception: return None
+
+    def _remember_format(self, fmt):
+        try: json.dump(dict(ver=1, fmt=fmt), open(self._format_file(), 'w'))
+        except OSError: pass
+
+    def _format_from_other_families(self, family, log=print, limit=14):
+        """try the first real mesh of up to `limit` OTHER characters of this game"""
+        try: others = [f for f in self.scan(log=log)['characters'] if f.key != family.key]
+        except Exception: return None
+        rels = []
+        for f in others:
+            live = [a.path for a in f.assets if getattr(a, 'role', '') != 'piece']
+            if live: rels.append(live[0])
+            if len(rels) >= limit: break
+        if not rels: return None
+        self.extract(rels, exts=('.uasset', '.uexp'))
+        return self._format_of(rels)
+
     # ------------------------------------------------------------ planning
     def plan(self, family):
         return autoprofile.suggest_plan(family.assets)
@@ -95,14 +130,13 @@ class Project:
         assets = family.assets
         content_prefix = re.match(r'(.*?/Content)/', assets[0].path).group(1)
         self.extract([a.path for a in assets if a.path in plan['targets']], exts=('.uasset', '.uexp'))
-        fmt = None; probe = [a.path for a in assets if a.path in plan['targets']] + [a.path for a in assets if a.path not in plan['targets']][:6]
+        probe = [a.path for a in assets if a.path in plan['targets']] + [a.path for a in assets if a.path not in plan['targets']][:6]
         self.extract(probe, exts=('.uasset', '.uexp'))
-        for rel in probe:                                               # first mesh in this family whose layout we can read
-            t0 = os.path.join(self.orig, rel)
-            if not (os.path.exists(t0 + '.uasset') and os.path.exists(t0 + '.uexp')): continue
-            try: fmt = detect_sk_format(open(t0 + '.uasset', 'rb').read(), open(t0 + '.uexp', 'rb').read())
-            except Exception: fmt = None
-            if fmt: break
+        fmt = self._format_of(probe)                                    # first mesh in this family whose layout we can read
+        if not fmt:                                                     # none of THIS character's meshes parse (cloth, a rare cook ...): the game's other characters still tell us the layout
+            fmt = self._cached_format() or self._format_from_other_families(family, log)
+            if fmt: log('this character\'s own files could not be read, using the layout found on the game\'s other characters')
+        if fmt: self._remember_format(fmt)
         if not fmt:
             t0 = os.path.join(self.orig, plan['targets'][0]); rep = os.path.join(self.dir, 'layout_report.txt')
             rep_note = ''

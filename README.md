@@ -261,3 +261,10 @@ NOT done: reading the model contents (NEDARCV1 / Spider-Man `.model`), writing a
 * **What the earlier test mod did:** it kept every one of the 29 sections at its original size and only rewrote the contents of the index buffer, the standard vertices and a few small tables,
   i.e. it reshaped the SAME 179,334 vertices instead of writing a model of a different size. That explains the odd figure and why textures were not touched.
 NOT done: index buffer / mesh table / skin-weight decoding, writing a model with a new vertex count, toc patching + archive writing, textures (.texture format), installing.
+
+## 2.14.2 - one unreadable character no longer hides a whole game
+Just Die Already showed "ModSwap can't read this game's character files yet" after the 2.14 update, although it had worked before. Cause: the game's mesh layout was detected only from the
+files of the character being fitted, and the list now puts main characters first, so the first character (which the app fits your model onto automatically) was one whose files do not parse;
+the app then treated that single failure as "this whole game is unreadable" and hid the list. Now, when none of a character's own meshes parse, the layout found on the game's OTHER characters
+(or on an earlier success, kept in `format.json` in the game's cache folder) is used. The "can't read" message only appears when no character of the game can be read at all. (`tests/test_game_format.py`)
+Known and still open: a few meshes carry cloth data (`cloth mapping data present`), which the reader refuses; those characters will still fail when fitted, with a normal error message.
