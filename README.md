@@ -268,3 +268,15 @@ files of the character being fitted, and the list now puts main characters first
 the app then treated that single failure as "this whole game is unreadable" and hid the list. Now, when none of a character's own meshes parse, the layout found on the game's OTHER characters
 (or on an earlier success, kept in `format.json` in the game's cache folder) is used. The "can't read" message only appears when no character of the game can be read at all. (`tests/test_game_format.py`)
 Known and still open: a few meshes carry cloth data (`cloth mapping data present`), which the reader refuses; those characters will still fail when fitted, with a normal error message.
+
+## Spider-Man: command line for a first in-game test (mesh + rig, NO textures yet)
+```
+python -m modswap spiderman suits
+python -m modswap spiderman slots --suit classic
+python -m modswap spiderman install --suit classic --model my.fbx --name Test        (game closed!)
+python -m modswap spiderman list
+python -m modswap spiderman restore                                                  (game exactly as before)
+```
+* The new suit model is written in the game's own format (verified by reading it back, and by re-encoding a real suit byte for byte), the character is auto-rigged onto the suit's 212-joint skeleton, and the game's index (`asset_archive\toc`) is redirected to it. The original index stays as `toc.BAK`; `restore` copies it back and deletes the mod files.
+* Material slots: mesh part k uses material record k (found by reading the model; the old note "slot 7" was wrong, the rubber material is slot 3 on the classic suit). Every part is put on the plain colour+normal+gloss slot.
+* **Not verified:** nothing has been launched in the game with this yet; textures are not replaced (the model shows the suit's own picture with your UVs, so it looks scrambled until `.texture` writing exists); `--flip-v` may be needed once textures are in. Sonic Frontiers is not swappable yet.
