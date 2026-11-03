@@ -275,6 +275,10 @@ def guess_images(model, dirs):
     for d in filter(None, dirs):
         if os.path.isdir(d): files += [os.path.join(d, f) for f in sorted(os.listdir(d)) if f.lower().endswith(IMAGE_EXT) and not f.lower().endswith('.dds')]
     files = list(dict.fromkeys(files))
+    if not files and any(im is None for im in model.images):                            # no picture beside the model: look in the folders around it (source/ + textures/)
+        for d in _near_dirs([x for x in dirs if x])[:60]:
+            files += [os.path.join(d, f) for f in sorted(os.listdir(d)) if f.lower().endswith(IMAGE_EXT) and not f.lower().endswith('.dds')]
+        files = list(dict.fromkeys(files))[:200]
     if not files: return
     color = [f for f in files if not any(k in os.path.basename(f).lower() for k in _NOT_COLOR)] or files
     def open_(f):
