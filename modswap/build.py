@@ -28,7 +28,7 @@ def run_profile(prof, orig, model, out, up=None, forward=None, scale=1.0, adjust
         rig = target_rig(prof, orig, t)
         files = swap_character(orig, t['mesh'], t.get('textures', prof.get('textures', [])), model, rig, out,
                                atlas_size=t.get('atlas', prof.get('atlas', 2048)), up=up or getattr(model, 'up', None) or prof.get('up', '+Y'),
-                               forward=forward, scale_mult=scale, sk_format=fmt, adjust=adjust, edits=edits, log=log)
+                               forward=forward, scale_mult=scale, sk_format=fmt, adjust=adjust, edits=edits, log=log, notes=t.get('texture_notes'))
         written += files; log('swapped ' + t['mesh'])
     skip = {os.path.normpath(t['mesh']) for t in targets}
     hide = list(prof.get('hide', []))

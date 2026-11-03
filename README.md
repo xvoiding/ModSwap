@@ -216,3 +216,21 @@ dropped from names. Not confirmed against the game's files. Also found in the la
 **ModSwap.exe is rebuilt (2.14.0).** Its source is now in `ui-recovered/` (see `RECOVERY.md`). The only behaviour change: a game is never greyed out "for good" after one error
 (the `broken.txt` list is gone). Everything else matches the old exe (same methods, same text, same window layouts), but this build has not been started on Windows yet.
 The previous exe is still in git history: `git checkout fc67f9e -- ModSwap.exe`.
+
+## 2.14.1 - texture fixes + rebuild your mods
+Swaps work in SpongeBob and Just Die Already, but the new model's textures looked wrong in the game (flat white in SpongeBob, blurry/smeared in JDA).
+What was checked and what changed:
+- **Checked and fine:** BCn compression (colours, channel order, alpha) and the atlas/UV mapping (median error 0 of 255, with tiled UVs). The picture ModSwap makes is right.
+- **Found and fixed (real bug):** when the character's ORIGINAL texture has no separate `.ubulk` data (small or never-streamed textures, every mip inline), the old writer put the
+  big mips in a `.ubulk` but flagged them as inline, so the game could not read them. Now an all-inline template keeps every mip inline. (`tests/test_texture_writer.py` runs the
+  old and new writer on the same fake templates: the old one produces an unreadable file for the all-inline case, fine for the other two; the new one is clean in all three.)
+- **Every texture is now read back after it is written** (mip sizes, flags, payload positions, header pointers, the pixels in the .ubulk). If anything is off, the build stops with
+  a clear message instead of installing a broken mod.
+- **Texture names:** a texture called ...Default / ...White in the character's OWN folder (JDA's `T_WallyDefault_BC`) is its real texture, not a placeholder. It used to be thrown away, which
+  left the original picture on the new model (wrong colours in the wrong places).
+- **BC3 alpha:** a DXT5 colour texture now keeps the original's alpha level instead of forcing 255 (some games use alpha as a glow/mask, which would whiten the model).
+- **`texture_report.txt`** (in `%APPDATA%\ModSwap`) is written on every build: which textures were replaced or skipped and why, their format / size / mips / flags in the original and in
+  the mod, whether the read-back check passed, and the colour of your model's atlas. If textures are still wrong, that file says why.
+- **Rebuild without remaking:** `runtime\python.exe -m modswap rebuild` redoes every saved mod that kept its model (made with 2.14 or newer) with every setting exactly as before,
+  and installed mods stay installed. Mods made before 2.14 only have the finished file: make those once more.
+NOT verified in a running game. Which of the above was the cause for SpongeBob / JDA depends on those games' texture files, and the report will show it.

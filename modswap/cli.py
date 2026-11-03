@@ -11,6 +11,7 @@
   python -m modswap restore --game ID         remove the mods ModSwap installed
   python -m modswap market list                                  models in the marketplace right now
   python -m modswap market build FOLDER [--out DIR] [--base-url URL]   turn a folder of models into a hostable catalog.json
+  python -m modswap rebuild [--game ID] [--mod ID]   redo your saved mods with the current engine, keeping every setting (installed ones stay installed)
   python -m modswap gui                       open the graphical app in your browser
 
 A *profile* describes one game character: where its mesh and textures live and which engine adapter to use.
@@ -132,6 +133,25 @@ def cmd_market(a):
         market.build_catalog(a.folder, out, a.base_url or '')
 
 
+def cmd_rebuild(a):
+    """redo saved mods with the current engine (e.g. after a texture fix) without choosing anything again"""
+    from . import mods, server
+    from .games.library import Library
+    lib = Library(); done = skipped = failed = 0
+    for gid, g in lib.games.items():
+        if a.game and gid != a.game: continue
+        for m in mods.list_mods(gid):
+            if a.mod and m['id'] != a.mod: continue
+            label = '%s / %s' % (g.name, m['name'])
+            if mods.edit_info(gid, m['id']) is None:
+                print('skipped  %s: made before ModSwap kept its model (make it once more and it can be rebuilt later)' % label); skipped += 1; continue
+            print('rebuilding  %s ...' % label)
+            try: server.rebuild_mod(gid, m['id'], log=print); print('done      %s' % label); done += 1
+            except Exception as e: print('FAILED    %s: %s' % (label, e)); failed += 1
+    print('\n%d rebuilt, %d skipped, %d failed.' % (done, skipped, failed))
+    if failed: sys.exit(1)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog='modswap'); sp = p.add_subparsers(dest='cmd', required=True)
     s = sp.add_parser('swap'); s.add_argument('--profile', required=True); s.add_argument('--orig', required=True)
@@ -146,6 +166,7 @@ def main(argv=None):
     ap = sp.add_parser('apply'); ap.add_argument('--game', required=True); ap.add_argument('--model', required=True); ap.add_argument('--textures'); ap.add_argument('--family', type=int, default=0)
     ap.add_argument('--name'); ap.add_argument('--up'); ap.add_argument('--forward'); ap.add_argument('--scale', type=float, default=1.0); ap.add_argument('--dry-run', action='store_true'); _fit_args(ap); ap.set_defaults(f=cmd_apply)
     rs = sp.add_parser('restore'); rs.add_argument('--game', required=True); rs.set_defaults(f=cmd_restore)
+    rb = sp.add_parser('rebuild'); rb.add_argument('--game'); rb.add_argument('--mod'); rb.set_defaults(f=cmd_rebuild)
     sv = sp.add_parser('serve'); sv.add_argument('--port', type=int, default=8765); sv.set_defaults(f=cmd_serve)
     mk = sp.add_parser('market'); mk.add_argument('action', choices=['list', 'build']); mk.add_argument('folder', nargs='?'); mk.add_argument('--out'); mk.add_argument('--base-url'); mk.set_defaults(f=cmd_market)
     gu = sp.add_parser('gui'); gu.add_argument('--port', type=int, default=8765); gu.add_argument('--no-browser', action='store_true'); gu.set_defaults(f=cmd_gui)

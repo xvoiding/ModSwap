@@ -85,7 +85,7 @@ def classify_texture(name):
     return None, None
 
 
-def body_textures(orig, mesh_rel, content_prefix, extract, log=print, strict=False):
+def body_textures(orig, mesh_rel, content_prefix, extract, log=print, strict=False, notes=None):
     """Textures to override for one body mesh. `extract(list_of_rel_bases)` must make the files exist under `orig`.
     strict: only textures that live next to the character's own files (SS/Characters/0350/...), never the game's shared ones."""
     ua = open(os.path.join(orig, mesh_rel + '.uasset'), 'rb').read()
@@ -100,8 +100,13 @@ def body_textures(orig, mesh_rel, content_prefix, extract, log=print, strict=Fal
         for name, pkg in import_packages(open(f, 'rb').read(), ('Texture2D',)):
             rel = game_path_to_rel(pkg, content_prefix)
             if not rel or rel in seen: continue
-            if PLACEHOLDER_TEX.search(name): continue
-            if pkg[len('/Game/'):].split('/')[0] != mesh_top and tex: pass
+            # A texture called ...Default / ...White is a shared stand-in only when it lives elsewhere. One in the character's OWN folder is its real
+            # texture (Just Die Already calls Wally's colour map "T_WallyDefault_BC"), and skipping it left the original picture on the new model.
+            mesh_dirs0 = mesh_rel[len(content_prefix) + 1:].split('/')[:-1]; k0 = min(3, len(mesh_dirs0))
+            near = pkg[len('/Game/'):].split('/')[:-1][:k0] == mesh_dirs0[:k0]
+            if PLACEHOLDER_TEX.search(name) and not near:
+                if notes is not None: notes.append('ignored %s: looks like a shared placeholder texture (%s)' % (name, pkg))
+                continue
             seen.add(rel); tex.append((name, rel, pkg))
     if strict:
         mesh_dirs = mesh_rel[len(content_prefix) + 1:].split('/')[:-1]; k = min(3, len(mesh_dirs))
@@ -115,7 +120,10 @@ def body_textures(orig, mesh_rel, content_prefix, extract, log=print, strict=Fal
         try: fmt = PF.get(parse_tex(os.path.join(orig, rel))['fmt'])
         except Exception as e: log('  cannot read texture %s: %r' % (name, e)); continue
         if role is None or fmt is None:
-            log('  skipping texture %s (role=%s format=%s)' % (name, role, fmt)); continue
+            log('  skipping texture %s (role=%s format=%s)' % (name, role, fmt))
+            if notes is not None: notes.append('skipped %s: role=%s format=%s (the original picture stays on the material)' % (name, role, fmt))
+            continue
+        if notes is not None: notes.append('replacing %s as %s (%s)' % (name, role, fmt))
         e = dict(path=rel, format=fmt, role=role, size=2048 if role == 'diffuse' else 256)
         if role == 'flat': e['color'] = color
         out.append(e)
@@ -134,7 +142,8 @@ def make_profile(game_name, content_prefix, sk_format, family_assets, plan, orig
         heads = [x.path for x in sib if HEAD.search(x.name + ' ' + x.folder)][:8]
         lowers = [x.path for x in sib if LOWER.search(x.name + ' ' + x.folder)][:8]
         extract(heads + lowers + [tp], exts=('.uasset', '.uexp'))
-        t = dict(name=a.name, mesh=tp, textures=body_textures(orig, tp, content_prefix, extract, log, strict=bool(sk_format.get('ue5'))))
+        notes = []
+        t = dict(name=a.name, mesh=tp, textures=body_textures(orig, tp, content_prefix, extract, log, strict=bool(sk_format.get('ue5')), notes=notes), texture_notes=notes)
         if heads and lowers: t['ref_top_from'] = heads; t['ref_bottom_from'] = lowers
         targets.append(t)
     return dict(name=game_name, engine='ue4', sk_format=sk_format, pak_version='', mount='../../../', atlas=2048,

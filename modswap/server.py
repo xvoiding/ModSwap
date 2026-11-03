@@ -297,6 +297,29 @@ def _edit_record(body):
     return {k: body.get(k) for k in ('family', 'target', 'up', 'forward', 'scale', 'width', 'height', 'depth', 'yaw', 'pitch', 'roll', 'dx', 'dy', 'dz', 'match_pose', 'parts', 'edits') if body.get(k) is not None}
 
 
+def rebuild_mod(gid, mid, log=print):
+    """Redo a saved mod with the CURRENT engine, using the model and every setting it was made with, and replace it in place: if the old one was
+    installed the new one is installed instead, and the old entry is deleted once the new one is built. -> new mod id."""
+    import time
+    from . import mods
+    info = mods.edit_info(gid, mid)
+    if info is None: raise ValueError("this mod was made before ModSwap kept its model, so it can't be rebuilt automatically")
+    g = _game(Library(), gid); was_active = mid in _active_ids(_project(g)); name = info.get('name') or 'mod'
+    os.makedirs(UPLOADS, exist_ok=True)
+    sid = uuid.uuid4().hex[:12]; mods.open_for_edit(gid, mid, os.path.join(UPLOADS, sid))
+    body = {k: v for k, v in info.items() if k not in ('name', 'character')}
+    body.update(game=gid, upload=sid, name=name, install=was_active)
+    jid = api_apply(body)
+    while not JOBS[jid]['done']: time.sleep(0.5)
+    j = JOBS[jid]
+    for line in j['log']: log('    ' + line)
+    if j['error']: raise RuntimeError(j['error'])
+    new = (j['result'] or {}).get('mod')
+    if not new: raise RuntimeError('the rebuild finished without making a mod')
+    if new != mid: mods.delete(gid, mid)                      # (never delete the mod we just built)
+    return new
+
+
 def api_mod_edit(body):
     """reopen a saved mod: its model + textures go into a fresh upload, and its fit settings come back so the fit screen can restore every slider"""
     from . import mods

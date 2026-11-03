@@ -13,7 +13,9 @@ def _slug(s): return re.sub(r'[^A-Za-z0-9]+', '-', s).strip('-')[:40] or 'mod'
 def add(gid, name, pak, character='', installed=False, source_dir=None, edit=None):
     """source_dir = the folder your model was uploaded to, edit = how it was fitted (family, sliders, body-part edits ...). Both are kept so the
     mod can be opened again and changed later (see edit_info / open_for_edit)."""
-    mid = '%s-%d' % (_slug(name), int(time.time()))
+    mid = '%s-%d' % (_slug(name), int(time.time())); n = 1
+    while os.path.exists(os.path.join(_dir(gid), mid)):        # same name in the same second (a rebuild, a fast double build): never share a folder with another mod
+        n += 1; mid = '%s-%d-%d' % (_slug(name), int(time.time()), n)
     d = os.path.join(_dir(gid), mid); os.makedirs(d, exist_ok=True)
     shutil.copy2(pak, os.path.join(d, 'mod.pak'))
     if source_dir and os.path.isdir(source_dir) and edit is not None:

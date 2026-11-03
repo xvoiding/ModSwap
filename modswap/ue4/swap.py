@@ -12,14 +12,15 @@ sk_format describes the engine's cook layout:
     UE4.25 (Just Die Already): exp_idx=1, rtmask=False
     UE4.26+/5 (Goat Simulator 3): exp_idx=0, rtmask=True  (section has a RecomputeTangents mask byte, LODs have a trailing int)
 """
-import os, struct
+import os, struct, time
 import numpy as np
 from PIL import Image
 
 from . import buildsk
 from .uepkg import parse_uasset
 from .skmesh import walk
-from .texwrite import build_texture
+from .texwrite import build_texture, check_texture, describe_texture, mip_payload, bc3_alpha_median
+from .tex import parse_tex
 from .. import atlas, skin
 
 JDA_FORMAT = dict(exp_idx=1, rtmask=False)
@@ -65,6 +66,19 @@ def _mode_color(o):
     return u[int(np.argmax(n))]
 
 
+def _report_path():
+    from ..games.library import config_dir
+    return os.path.join(config_dir(), 'texture_report.txt')
+
+
+def _write_report(lines, log=print):
+    """texture_report.txt in %APPDATA%\\ModSwap: what every texture of the last swap was, how it was written and whether it read back correctly"""
+    try:
+        p = _report_path(); old = open(p, encoding='utf-8').read()[-150000:] if os.path.exists(p) else ''
+        open(p, 'w', encoding='utf-8').write(old + '\n'.join(lines) + '\n'); log('texture report saved: ' + p)
+    except OSError: pass
+
+
 def _norm_tex(t):
     if isinstance(t, dict): return t
     rel, kind, role = t
@@ -102,7 +116,7 @@ def generic_fit(o, model, rig, up='+Y', forward=None, scale_mult=1.0, adjust=Non
 
 
 def swap_character(orig_dir, sk_rel, textures, model, rig, out_dir, atlas_size=2048,
-                   up='+Y', forward=None, scale_mult=1.0, overlay_fn=None, sk_format=None, adjust=None, edits=None, log=print):
+                   up='+Y', forward=None, scale_mult=1.0, overlay_fn=None, sk_format=None, adjust=None, edits=None, log=print, notes=None):
     fmt = sk_format or JDA_FORMAT
     o = buildsk.Orig(os.path.join(orig_dir, sk_rel), **fmt)
     if is_humanoid(rig): r = skin.autorig(model.pos, model.nrm, rig, up=up, forward=forward, scale_mult=scale_mult, adjust=adjust, edits=edits, tris=model.tris)
@@ -153,10 +167,22 @@ def swap_character(orig_dir, sk_rel, textures, model, rig, out_dir, atlas_size=2
     log('mesh ok: %d verts, %d tris, %d LODs' % (N, nT, len(o.o['lods'])))
 
     # ---- textures
+    rep = ['', '=== %s   (%s)' % (os.path.basename(sk_rel), time.strftime('%Y-%m-%d %H:%M:%S')),
+           'your model: %d material(s) %s, %d of %d have a texture picture; atlas %dpx, mean colour of the atlas RGB(%s)' % (
+               len(model.mat_names), [str(n)[:24] for n in model.mat_names[:6]], sum(i is not None for i in model.images), len(model.images), atlas_size,
+               ', '.join('%d' % v for v in atl.reshape(-1, 3).mean(0)))]
+    for note in (notes or []): rep.append('profile note: ' + note)
     for t in map(_norm_tex, textures):
         rel, kind, role = t['path'], t['format'], t['role']; size = int(t.get('size', atlas_size))
+        tb = os.path.join(orig_dir, rel); ob = os.path.join(out_dir, rel)
         if role == 'diffuse':
             arr = atl if size == atlas_size else np.array(Image.fromarray(atl).resize((size, size), Image.LANCZOS))
+            if kind == 'bc3':                                  # keep the original texture's alpha level (many games use alpha as a mask/glow, not opacity)
+                try:
+                    to = parse_tex(tb); a = bc3_alpha_median(mip_payload(tb, to, 0))
+                except Exception as e: a = 255; rep.append('  (could not read the original alpha: %r)' % (e,))
+                if a < 250: arr = np.dstack([arr, np.full(arr.shape[:2], a, np.uint8)])
+                rep.append('  original alpha level %d%s' % (a, ' (kept)' if a < 250 else ' (opaque)'))
         elif role == 'normal':
             arr = np.zeros((size, size, 3), np.uint8); arr[...] = (128, 128, 255)
         elif role == 'flat':
@@ -166,11 +192,19 @@ def swap_character(orig_dir, sk_rel, textures, model, rig, out_dir, atlas_size=2
             if overlay_fn: arr = overlay_fn(atl)
         else: raise ValueError('unknown texture role ' + role)
         chain = atlas.compress_chain(arr, kind)
-        tb = os.path.join(orig_dir, rel); ob = os.path.join(out_dir, rel)
         os.makedirs(os.path.dirname(ob), exist_ok=True)
+        rep.append('texture %s: role %s, %s, %dpx' % (rel.rsplit('/', 1)[-1], role, kind, size))
+        try: rep += ['  original: ' + x for x in describe_texture(tb)]
+        except Exception as e: rep.append('  original unreadable: %r' % (e,))
         build_texture(tb, ob, chain, {}, size=size, first_mip=0)
         written += [rel + e for e in ('.uasset', '.uexp', '.ubulk')]
-        log('texture %s (%dpx %s)' % (os.path.basename(rel), size, kind))
+        probs = check_texture(ob, chain)                       # read it back the way the game will and make sure it hangs together
+        try: rep += ['  written:  ' + x for x in describe_texture(ob)]
+        except Exception as e: rep.append('  written unreadable: %r' % (e,))
+        rep.append('  self-check: ' + ('OK' if not probs else 'PROBLEMS: ' + '; '.join(probs[:6])))
+        log('texture %s (%dpx %s)%s' % (os.path.basename(rel), size, kind, '' if not probs else '  PROBLEM: ' + probs[0]))
+        if probs: _write_report(rep, log); raise RuntimeError('ModSwap wrote texture %s wrongly (%s). Nothing was installed. A report was saved: %s' % (os.path.basename(rel), probs[0], _report_path()))
+    _write_report(rep, log)
     return written
 
 
