@@ -14,6 +14,8 @@ import os, re, struct, zlib
 import numpy as np
 
 MAGIC = 0x77AF12AF
+# materials / models point at other assets by PATH TEXT (e.g. 'characters\\hero\\hero_spiderman\\textures\\x_n.texture'), not by id
+_PATH = re.compile(rb'[A-Za-z0-9_\-./\\ ]{3,200}\.(?:texture|material|model|materialgraph|skeleton|animclip|config)', re.I)
 SEC_IDS, SEC_SIZES, SEC_PLACES, SEC_ARCHIVES = 0x506D7B8A, 0x65BCF461, 0xDCD720B5, 0x398ABFF0
 _POLY = 0xC96C5795D7870F42
 _TAB = []
@@ -100,3 +102,13 @@ class Toc:
             k = np.searchsorted(sids, arr); k[k >= self.count] = 0
             for pos in np.flatnonzero(sids[k] == arr): found.setdefault(int(self._order[k[pos]]), int(shift + pos * 8))
         return [i for i in found if i not in skip]
+
+    def path_references(self, data, skip=()):
+        """asset numbers named by path text inside `data` (see _PATH). -> {asset number: the path as written}"""
+        found = {}
+        for m in _PATH.finditer(bytes(data)):
+            txt = m.group().decode('latin1').strip()
+            for cand in dict.fromkeys((txt, txt.split(' ')[-1])):            # (a stray word glued in front of the path: try the last word too)
+                i = self.find(cand)
+                if i is not None and i not in skip: found.setdefault(i, cand); break
+        return found

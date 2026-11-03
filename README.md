@@ -252,3 +252,12 @@ UPDATE (second sample round):
   root -> its dependency table names the embedded split (`amy.pac.000`, another LZ4-chunked inner archive) that holds the real data. amy.pac.000: 1 `model` (3.2 MB, magic `NEDARCV1`), `material`s,
   `uv-anim`/`mat-anim`; sonic.pac: 4 models, 35 DDS textures (1024x1024 BC1/BC5/BC7 with full mip chains). Amy's own colour textures are not in her split (probably her parent archives).
 NOT done: reading the model contents (NEDARCV1 / Spider-Man `.model`), writing a new model, writing a PACx / patching the Spider-Man toc, installing, Sonic Colors. ALERT (Tkachov) documents the Insomniac formats but is GPL-3.0, so nothing is copied from it.
+
+### Spider-Man, third round (real extraction now works)
+* `tools/collect_spiderman.py` now reads the game correctly (DSAR blocks): the original classic-suit model and its 11 materials came out clean (all `DAT1`). Materials name their
+  textures by PATH TEXT (`characters\\hero\\hero_spiderman\\textures\\..._n.texture`), so the toc reader/collector also follow path strings (78 of 88 strings in the real materials resolve).
+* `modswap/insomniac/model.py` reads the model's section table and standard vertex stream (XOR-delta, 8 planar int16 streams per batch, 1/4096 m): the classic suit decodes to 179,334 vertices,
+  1.82 m tall. Section tags: index 0859863D, standard verts A98BE69B, uv1 6B855EED, colour 5CBA9DE9, joints 15DF9D3B, ...
+* **What the earlier test mod did:** it kept every one of the 29 sections at its original size and only rewrote the contents of the index buffer, the standard vertices and a few small tables,
+  i.e. it reshaped the SAME 179,334 vertices instead of writing a model of a different size. That explains the odd figure and why textures were not touched.
+NOT done: index buffer / mesh table / skin-weight decoding, writing a model with a new vertex count, toc patching + archive writing, textures (.texture format), installing.

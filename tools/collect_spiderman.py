@@ -22,17 +22,17 @@ def collect(game, out_zip, budget_mb=150, depth=3, log=print):
     bak = os.path.join(ad, 'toc.BAK'); src = bak if os.path.isfile(bak) else os.path.join(ad, 'toc')
     log('reading the index: %s%s' % (src, '' if src == bak else '  (no toc.BAK: a mod may already be installed, the assets may be modified)'))
     toc = Toc.open(src); budget = int(budget_mb * 1024 * 1024); used = 0
-    seen = {}; queue = []; index = []
+    seen = {}; queue = []; index = []; known_paths = {}
     for p in SEEDS:
         i = toc.find(p)
         if i is None: log('  not in this game: ' + p); continue
-        seen[i] = 0; queue.append((i, 0, p)); log('  start: %s' % p)
+        seen[i] = 0; queue.append((i, 0, p)); known_paths[i] = p; log('  start: %s' % p)
     os.makedirs(os.path.dirname(os.path.abspath(out_zip)), exist_ok=True)
     with zipfile.ZipFile(out_zip, 'w', zipfile.ZIP_DEFLATED, compresslevel=3) as z:
         k = 0
         while k < len(queue):
             i, d, why = queue[k]; k += 1
-            rec = dict(id='%016X' % int(toc.ids[i]), asset=i, size=toc.size(i), archive=toc.archive_name(i), offset=toc.offset(i), depth=d, found_via=why if isinstance(why, str) else None, copied=False)
+            rec = dict(id='%016X' % int(toc.ids[i]), path=known_paths.get(i), asset=i, size=toc.size(i), archive=toc.archive_name(i), offset=toc.offset(i), depth=d, found_via=why if isinstance(why, str) else None, copied=False)
             index.append(rec)
             if toc.size(i) > MAX_ASSET or used + toc.size(i) > budget: rec['note'] = 'not copied (size/budget)'; continue
             try: data = toc.read(i, ad)
@@ -41,6 +41,8 @@ def collect(game, out_zip, budget_mb=150, depth=3, log=print):
             if d < depth and len(data) <= MAX_SCAN:
                 for j in toc.references(data, skip=seen):
                     seen[j] = d + 1; queue.append((j, d + 1, '%s' % rec['id']))
+                for j, path in toc.path_references(data, skip=seen).items():            # materials name their textures by path text
+                    seen[j] = d + 1; queue.append((j, d + 1, '%s' % rec['id'])); known_paths[j] = path
             if k % 25 == 0: log('  %d assets, %.1f MB so far' % (k, used / 1e6))
         z.writestr('index.json', json.dumps(dict(archives=toc.archives, source_toc=os.path.basename(src), assets=index), indent=1))
         # the earlier ModSwap mod and the toc it patched

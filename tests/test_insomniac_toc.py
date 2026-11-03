@@ -47,7 +47,7 @@ def fake_game(with_bak=True, dsar=True):
                                             mat='characters/hero/hero_spiderman_classic/classic.material', tex='characters/hero/hero_spiderman_classic/classic_d.texture', other='x/unrelated.texture').items()}
     pad = lambda b: b + b'\0' * (-len(b) % 8)
     blobs = {'tex': b'TEXTUREDATA' * 10,
-             'mat': b'MATL\0\0\0\0' + struct.pack('<Q', ids['tex']) + b'tail',
+             'mat': b'MATL\0\0\0\0' + b'\0texture path: characters\\hero\\hero_spiderman_classic\\classic_d.texture\0' + b'tail',
              'model': b'MODEL\0\0\0' + struct.pack('<Q', 0x1234) + b'xxxx' + struct.pack('<Q', ids['mat']) + b'end',      # (the material id sits at a 4-byte aligned spot)
              'base': b'BASE', 'other': b'OTHER' * 7}
     arc = bytearray(b'HEADERJUNK' + b'\0' * 6); place = {}
@@ -102,6 +102,13 @@ def test_plain_archive_reads_at_file_positions_and_bad_dsar_is_reported():
     b = Archive(q)
     try: b.read(0, b.length); raise AssertionError('cut')
     except ValueError as e: assert 'cut short' in str(e) or 'decompress' in str(e) or 'past' in str(e), e
+
+
+def test_path_text_references_are_followed():
+    g, ids, blobs = fake_game(); t = T.Toc.open(os.path.join(g, 'asset_archive'))
+    r = t.path_references(blobs['mat']); assert list(r) == [t.find(ids['tex'])] and r[t.find(ids['tex'])].endswith('classic_d.texture'), r
+    assert t.path_references(b'nothing: not/a/known/path.texture') == {} and t.path_references(b'') == {}
+    assert t.find(ids['tex']) not in t.path_references(blobs['mat'], skip=[t.find(ids['tex'])])
 
 
 def test_references_find_ids_inside_a_file_and_nothing_else():
