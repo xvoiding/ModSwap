@@ -106,7 +106,7 @@ def cmd_install(a):
     rows = MT.slots(orig, toc, I.ad)
     slot = a.material if a.material is not None else MT.pick_single_texture_slot(rows, a.suit)
     if slot is None: sys.exit('could not find a simple material slot in this suit; run `slots` and pass --material N')
-    print('suit %s: all parts go on material slot %d (%s)' % (a.suit, slot, MT.colour_texture(rows, slot)))
+    print('suit %s: all parts go on material slot %d (%s)' % (a.suit, slot, MT.colour_texture(rows, slot, MT.folder_of(a.suit))))
     m = load_model(a.model, a.textures)
     print('model: %d vertices, %d triangles, %d textures' % (len(m.pos), len(m.tris), sum(i is not None for i in m.images)))
     adj = dict(width=a.width, height=a.height, depth=a.depth, yaw=a.yaw, pitch=a.pitch, roll=a.roll, dx=a.dx, dy=a.dy, dz=a.dz)

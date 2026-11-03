@@ -47,3 +47,12 @@ def test_material_ids_from_the_models_own_path_strings_match_the_record_scan():
 
 def test_accessory_words_are_whole_words():
     assert MT._accessory('webshooters_c.texture') and MT._accessory('shoe_n.texture') and MT._accessory('fearitself_eyesframe_c') and not MT._accessory('white_damagemask_g.texture') and not MT._accessory('body_c.texture')
+
+
+def test_only_the_suits_own_matching_textures_are_replaced_never_shared_or_layered_ones():
+    f = 'characters/hero/hero_spiderman_noir/textures/hero_spiderman_noir_%s.texture'
+    r = row(12, 'x/legacy_hero_spiderman_basic_normal_gloss.mg', ['textures/default_pink_shader/default_pink_shader_g.texture', 'characters/shared/textures/detail/hero_spiderman_damage_c.texture', 'textures/default_pink_shader/default_pink_shader_c.texture',
+                                                                f % 'vest_g', 'x/detail_softleather_01_n.texture', f % 'vest_n', f % 'vest_c', f % 'vest_damagemask_g'], 5)
+    t = MT.slot_textures(r, 'hero_spiderman_noir')
+    assert t == dict(c=f % 'vest_c', n=f % 'vest_n', g=f % 'vest_g'), t                     # (it used to take the first '_c' in the list: the shared, layered damage texture)
+    assert MT.pick_single_texture_slot([r], 'noir') == 12 and MT.slot_textures(row(0, 'x', ['characters/shared/textures/detail/hero_spiderman_damage_c.texture'], 1), 'hero_spiderman_noir') is None

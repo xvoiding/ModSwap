@@ -85,16 +85,13 @@ def slot_choices(rows, suit):
     tier 3 = the plain 'colour + normal + gloss' kind (the colour texture is the whole look), 2 = another shader with its own colour + normal + gloss, 1 = another shader with its own colour texture."""
     out = []; folder = folder_of(suit)
     for r in rows:
-        tex = [t.lower().replace('\\', '/') for t in r['textures']]; sh = r['shader'].lower()
-        own_c = [t for t in tex if t.endswith('_c.texture') and folder in t]
-        if not own_c: continue
-        has = lambda role: any(t.endswith('_%s.texture' % role) and folder in t for t in tex)
-        plain = 'basic_normal_gloss' in sh and 'alpha' not in sh and 'detail' not in sh and 'eye' not in sh
-        tier = 3 if plain and has('n') and has('g') else 2 if has('n') and has('g') else 1
-        own = [t for t in tex if folder in t]
-        names = ' '.join(re.sub('hero|spiderman|' + re.escape(suit.lower().replace('npc_', '')), '', t.rsplit('/', 1)[-1]).strip('_') for t in own)       # (the part of the name after the suit's: 'body_c.texture', 'trim_n.texture' ...)
+        t = slot_textures(r, folder)
+        if t is None: continue
+        sh = r['shader'].lower(); plain = 'basic_normal_gloss' in sh and 'alpha' not in sh and 'detail' not in sh and 'eye' not in sh
+        tier = 3 if plain and t['n'] and t['g'] else 2 if t['n'] and t['g'] else 1
+        names = re.sub('hero|spiderman|' + re.escape(suit.lower().replace('npc_', '')), '', t['c'].lower().rsplit('/', 1)[-1]).strip('_')       # (the part of the name after the suit's: 'body_c.texture', 'trim_c.texture' ...)
         pref = any(w in names for w in ('rubber', 'suit', 'body', 'torso', 'main', 'vest', 'upper', 'arms_legs'))
-        main = not _accessory(names)                              # (the whole model goes on this one material: a main cloth / body material, not a lens, a button or the webshooters)
+        main = not _accessory(names)                                              # (the whole model goes on this one material: a main cloth / body material, not a lens, a button or the webshooters)
         out.append((tier, main, pref, r['triangles'], r['slot']))
     return sorted(out, reverse=True)
 
@@ -105,7 +102,23 @@ def pick_single_texture_slot(rows, suit):
     c = slot_choices(rows, suit); return c[0][-1] if c else None
 
 
-def colour_texture(rows, slot):
-    """path of the slot's colour (_c) texture, or None"""
+def slot_textures(row, folder=None):
+    """-> {'c': path, 'n': path or None, 'g': path or None}: the colour / normal / gloss textures of a material slot that belong to the character itself and go together (same name, '<name>_c / _n / _g').
+    A material also lists shared textures (a pink placeholder, damage / detail maps, other parts' textures): those are never touched. None when the slot has no own colour texture."""
+    tex = list(row['textures']); low = [t.lower().replace('\\', '/') for t in tex]
+    def own(i): return (folder.lower() in low[i]) if folder else not any(w in low[i] for w in ('/shared/', 'default_pink', 'test/', '/detail/', 'damage_c'))
+    cs = [i for i, t in enumerate(low) if t.endswith('_c.texture') and own(i)]
+    if not cs: return None
+    c = tex[cs[0]]; stem = c[:-len('_c.texture')]; out = dict(c=c)
+    for role in 'ng':
+        want = (stem + '_%s.texture' % role).lower().replace('\\', '/')
+        same = [t for t, l in zip(tex, low) if l == want]
+        out[role] = same[0] if same else None
+    return out
+
+
+def colour_texture(rows, slot, folder=None):
+    """path of the slot's own colour (_c) texture, or None"""
     r = next((x for x in rows if x['slot'] == slot), None)
-    return None if r is None else next((t for t in r['textures'] if t.lower().endswith('_c.texture')), None)
+    t = None if r is None else slot_textures(r, folder)
+    return None if t is None else t['c']
