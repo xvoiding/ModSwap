@@ -26,7 +26,10 @@ Invoke-WebRequest 'https://bootstrap.pypa.io/get-pip.py' -OutFile $gp -UseBasicP
 & $py $gp --no-warn-script-location
 if ($LASTEXITCODE -ne 0) { throw 'pip could not be installed' }
 Write-Host "4/5  installing ModSwap's packages (a few minutes) ..."
-& $py -m pip install --no-warn-script-location -r (Join-Path $root 'requirements.txt')
+# the embeddable Python has no setuptools, and its sandboxed builds can not see one: install it first and build packages (tpk_ar has no ready-made wheel) with --no-build-isolation
+& $py -m pip install --no-warn-script-location setuptools wheel
+if ($LASTEXITCODE -ne 0) { throw 'setuptools could not be installed' }
+& $py -m pip install --no-warn-script-location --no-build-isolation -r (Join-Path $root 'requirements.txt')
 if ($LASTEXITCODE -ne 0) { throw 'a package could not be installed (see the red text above)' }
 Write-Host "5/5  checking ..."
 & $py -c "import numpy, PIL, lz4.block, etcpak, trimesh, UnityPy, texture2ddecoder; print('runtime OK: Python', __import__('sys').version.split()[0])"
