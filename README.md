@@ -288,3 +288,16 @@ python -m modswap spiderman restore                                             
 * A mod = the suit's model + its three textures (colour = your picture at 1024x1024, flat normal, neutral gloss). A new mod for a suit that already wears one replaces it. Tested end to end through the app's own server functions on the real suit assets (fit for the viewer, apply, replace, uninstall, reinstall from the library, restore byte for byte).
 * **Viewer / texture bug fixed:** loaders welded vertices by position + normal + uv but NOT by material, so a vertex shared by two materials (typical where a head meets a body) could map into only one material's part of the texture atlas and the other material's triangles smeared across the wrong part of the picture. Vertices are now split per material (`modelio.split_by_material`, test: `tests/test_material_split.py`). I could not look at your viewer; if textures still look scrambled after this, a screenshot of the viewer next to the same model in-game would pinpoint it.
 * Not verified: the app screens themselves with a real Spider-Man folder on your PC (the server functions are tested; the WPF app is unchanged).
+
+## Sonic Frontiers: the model format is now read (nothing is swappable yet)
+* `modswap/hedgehog/needle.py` reads / rebuilds the `NEDARCV1` container of a `.model` (byte-identical rebuild of Amy's file) and `modswap/hedgehog/hemodel.py` reads a `NEDMDLV5` model:
+  all 89 meshes of Sonic, Amy, Knuckles and Tails (every level of detail) decode: positions, 10-bit normals / tangents, half-float UVs, vertex colours, skin bone indices + weights, the
+  triangle lists, material names, texture slots, and the 140-190 node skeleton (names, parents, inverse-bind matrices -> bind-pose positions).
+* Checked: every position is finite and inside the model's stored bounding box, normals are unit length, skin weights sum to 1, bone parents come before children, Hips sit at mid height
+  with Head above and the ears on opposite sides, and a render of Sonic's vertices coloured by their dominant bone shows head, ears, arms, gloves and shoes where they belong.
+* Format notes (worked out on the real files; HedgeLib, MIT, documents the Sonic Forces version of the same structures): counts / sizes / floats / vertex data are BIG endian; pointers are
+  little-endian values relative to their own address (inside a Needle archive) or big-endian offsets from byte 0x10 (a bare chunk). Mesh part = 0x2C bytes (material, faces, vertex count,
+  vertex size, vertices, vertex elements, bone table, texture units). Vertex = 40 bytes: float3 position, three 10-bit packed vectors (normal, tangent, binormal), half2 uv, 4 colour bytes,
+  4 bone bytes, 4 weight bytes. Characters are drawn with extra OUTLINE meshes (toon edge) and a FUR mesh (the body), so a swap has to deal with those too.
+* Not done yet: WRITING a model (the pointer table at the end of the chunk must be regenerated), writing the `.pac` back (LZ4 chunks, header sizes), replacing the DDS textures, the
+  installer, and the app screens. Nothing here has been tried in the game.
