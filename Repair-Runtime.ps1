@@ -18,7 +18,10 @@ if (Test-Path (Join-Path $root 'runtime')) {
 Write-Host "2/5  unpacking ..."
 Expand-Archive -Path $zip -DestinationPath (Join-Path $root 'runtime')
 $pth = Get-ChildItem (Join-Path $root 'runtime') -Filter 'python*._pth' | Select-Object -First 1
-(Get-Content $pth.FullName) -replace '^#\s*import site', 'import site' | Set-Content $pth.FullName
+$lines = (Get-Content $pth.FullName) -replace '^#\s*import site', 'import site'
+# the embeddable Python only looks inside its own folder: '..' (the ModSwap folder) lets it find the 'modswap' package
+if ($lines -notcontains '..') { $lines = @($lines) + '..' }
+$lines | Set-Content $pth.FullName
 $py = Join-Path $root 'runtime\python.exe'
 Write-Host "3/5  installing pip ..."
 $gp = Join-Path $tmp 'get-pip.py'
@@ -32,7 +35,7 @@ if ($LASTEXITCODE -ne 0) { throw 'setuptools could not be installed' }
 & $py -m pip install --no-warn-script-location --no-build-isolation -r (Join-Path $root 'requirements.txt')
 if ($LASTEXITCODE -ne 0) { throw 'a package could not be installed (see the red text above)' }
 Write-Host "5/5  checking ..."
-& $py -c "import numpy, PIL, lz4.block, etcpak, trimesh, UnityPy, texture2ddecoder; print('runtime OK: Python', __import__('sys').version.split()[0])"
+& $py -c "import numpy, PIL, lz4.block, etcpak, trimesh, UnityPy, texture2ddecoder, modswap.cli; print('runtime OK: Python', __import__('sys').version.split()[0])"
 if ($LASTEXITCODE -ne 0) { throw 'the new runtime does not start correctly' }
 Write-Host ''
 Write-Host 'Done. Open ModSwap.exe again.' -ForegroundColor Green
