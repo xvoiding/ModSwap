@@ -15,14 +15,22 @@ def _clean(T):
     _, first = np.unique(np.sort(T, axis=1), axis=0, return_index=True); return T[np.sort(first)]
 
 
-def plan(pos, tris, cap):
-    """-> (keep: indices of the vertices to keep, tris: triangles in the kept numbering) or None when the mesh already fits"""
+def labels_from_uv(uv, cells=48):
+    """a number per vertex that says WHICH PART OF THE TEXTURE it samples (a coarse cell of the atlas): vertices with different labels are never merged, so a reduced triangle can not
+    mix corners from different materials / UV islands (that would smear the texture over the model)"""
+    q = np.clip(np.floor(np.asarray(uv, np.float64) * cells), 0, cells - 1).astype(np.int64); return q[:, 0] * cells + q[:, 1]
+
+
+def plan(pos, tris, cap, labels=None):
+    """-> (keep: indices of the vertices to keep, tris: triangles in the kept numbering) or None when the mesh already fits. `labels` (one per vertex) keeps vertices apart."""
     tris = np.asarray(tris, np.int64)
     if len(tris) <= cap: return None
     pos = np.asarray(pos, np.float64); lo = pos.min(0); ext = float(max((pos.max(0) - lo).max(), 1e-9))
+    lab = None if labels is None else np.unique(np.asarray(labels), return_inverse=True)[1].ravel().astype(np.int64); nl = 1 if lab is None else int(lab.max()) + 1
     def cluster(res):
-        q = np.minimum(np.floor((pos - lo) / ext * res), res - 1).astype(np.int64)
-        return np.unique((q[:, 0] * res + q[:, 1]) * res + q[:, 2], return_inverse=True)[1].ravel()
+        q = np.minimum(np.floor((pos - lo) / ext * res), res - 1).astype(np.int64); key = (q[:, 0] * res + q[:, 1]) * res + q[:, 2]
+        if lab is not None: key = key * nl + lab
+        return np.unique(key, return_inverse=True)[1].ravel()
     a, b, best = 4, 1024, None
     while a <= b:
         mid = (a + b) // 2; inv = cluster(mid); T = inv[tris]; T = T[(T[:, 0] != T[:, 1]) & (T[:, 1] != T[:, 2]) & (T[:, 0] != T[:, 2])]
@@ -36,11 +44,11 @@ def plan(pos, tris, cap):
     return first[used], new.reshape(-1, 3).astype(np.int64)
 
 
-def cached_plan(key, pos, tris, cap):
+def cached_plan(key, pos, tris, cap, labels=None):
     k = (key, len(tris), zlib.crc32(np.ascontiguousarray(tris, np.int64).tobytes()), cap)
     if k not in _PLANS:
         if len(_PLANS) > 8: _PLANS.pop(next(iter(_PLANS)))
-        _PLANS[k] = plan(pos, tris, cap)
+        _PLANS[k] = plan(pos, tris, cap, labels)
     return _PLANS[k]
 
 
@@ -56,5 +64,5 @@ def outline(key, pos, tris, cap=OUTLINE_TRIS):
 
 
 def model(key, pos, tris, uv, group, cap=MODEL_TRIS):
-    """-> (pos, tris, uv, group) for the user's model (uv / group have one row per vertex)"""
-    T, P, U, G = apply(cached_plan(key, pos, tris, cap), tris, pos, uv, group); return np.asarray(P, np.float32), T, U, G
+    """-> (pos, tris, uv, group) for the user's model (uv / group have one row per vertex; uv are ATLAS coordinates)"""
+    T, P, U, G = apply(cached_plan(key, pos, tris, cap, None if uv is None else labels_from_uv(uv)), tris, pos, uv, group); return np.asarray(P, np.float32), T, U, G

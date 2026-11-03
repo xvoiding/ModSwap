@@ -336,3 +336,10 @@ Also in the app: Sonic Frontiers is detected as "Hedgehog Engine 2", its swappab
 * **"Slide to 1, it jumps to 1000" fixed.** The Left/right, Forward/back, Up/down sliders (and the Edit-body-parts move / pivot values) are in centimetres, but the Spider-Man and Sonic rigs are in METRES and
   the auto-rig adds them in rig units, so 1 cm moved the model 1 m (10 cm moved it 1000 cm). They are converted now (`swap.metres`, `edit.scale_lengths`); tests move a model 10 cm and measure 10 cm on both
   rigs, and a part move of 10 cm moves only that part by 10 cm. Unreal and Unity were not affected (their rigs are in centimetres). Mods made before this with a non-zero offset slider should be re-made.
+
+## 2.16.2 - texture diagnostic, texture-safe viewer reduction
+* `python -m modswap diagnose --model my.fbx --textures FOLDER` loads a model like the app does and checks, material by material, that every vertex finds the right colour in the atlas the viewer and the builds
+  use (1024 and 2048). It writes `diagnose_report.txt` (which picture each material got, its size and average colour, UV ranges, triangles whose corners mix materials, atlas mismatches), `atlas_1024.png`
+  (the atlas with every material's cell outlined) and one preview picture per material. Use it when a model's textures look wrong in the viewer.
+* The viewer-only reduction for huge meshes (2.16.1) now keeps vertices of different atlas regions apart (`viewerlod.labels_from_uv`), so a reduced triangle can never mix corners from different
+  materials / UV islands and smear the texture over the model. Test: two texture regions on a big sphere, no reduced triangle spans both.

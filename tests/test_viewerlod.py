@@ -17,7 +17,7 @@ def test_small_meshes_are_untouched():
 
 
 def test_big_mesh_fits_the_budget_and_keeps_its_shape_and_per_vertex_data_aligned():
-    pos, tris = sphere(400); uv = np.random.default_rng(0).uniform(size=(len(pos), 2)); grp = np.arange(len(pos)) % 6
+    pos, tris = sphere(400); uv = (pos[:, [0, 2]] + 1) / 2 * 0.98 + 0.01; grp = np.arange(len(pos)) % 6
     t = time.time(); P, T, U, G = V.model('big', pos, tris, uv, grp, cap=20000); dt = time.time() - t
     assert len(T) <= 20000 and len(T) > 4000, len(T)
     assert len(U) == len(P) == len(G) and T.max() < len(P) and T.min() >= 0
@@ -31,6 +31,17 @@ def test_triangle_winding_is_kept_so_the_mesh_still_faces_outwards():
     pos, tris = sphere(200); P, T = V.outline('w', pos, tris, cap=8000); c = P.mean(0)
     fn = np.cross(P[T[:, 1]] - P[T[:, 0]], P[T[:, 2]] - P[T[:, 0]]); out = (fn * (P[T].mean(1) - c)).sum(1)
     assert (out > 0).mean() > 0.95 or (out < 0).mean() > 0.95, 'all faces turn the same way'
+
+
+def test_reduction_never_mixes_texture_regions():
+    """two halves of a big sphere use different parts of the texture; after reduction no triangle may have corners in both"""
+    pos, tris = sphere(500); left = pos[:, 0] < 0
+    uv = np.where(left[:, None], np.stack([0.1 + 0.2 * (pos[:, 1] + 1) / 2, 0.1 + 0.2 * (pos[:, 2] + 1) / 2], 1), np.stack([0.7 + 0.2 * (pos[:, 1] + 1) / 2, 0.7 + 0.2 * (pos[:, 2] + 1) / 2], 1))
+    # triangles that straddle the seam share vertices of both halves: split them off like the loaders do (corners belong to one material)
+    keep = left[tris].all(1) | (~left[tris]).all(1); tris = tris[keep]
+    P, T, U, G = V.model('mix', pos, tris, uv, np.zeros(len(pos), int), cap=15000)
+    assert len(T) <= 15000 and len(T) > 3000
+    lab = (U[:, 0] > 0.5)[T]; assert (lab.all(1) | (~lab).all(1)).all(), 'a reduced triangle must stay inside one texture region'
 
 
 if __name__ == '__main__':

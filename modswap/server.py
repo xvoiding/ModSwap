@@ -231,7 +231,7 @@ def api_fit(body):
         if 'origb64' not in ctx: ctx['origb64'] = {}
         if ti not in ctx['origb64']:
             vo, vt = viewerlod.outline((gid, fam, ti), opos, otris); ctx['origb64'][ti] = dict(pos=_b64(vo, '<f4'), idx=_b64(vt, '<u4'), n=len(vo), t=len(vt))
-        vtris, vpos, vuv, vgrp = viewerlod.apply(viewerlod.cached_plan((mkey, tuple(parts or ()), 'ue'), pos, tris, viewerlod.MODEL_TRIS), tris, pos, uv, info['vgroup'])
+        vtris, vpos, vuv, vgrp = viewerlod.apply(viewerlod.cached_plan((mkey, tuple(parts or ()), 'ue'), pos, tris, viewerlod.MODEL_TRIS, viewerlod.labels_from_uv(uv)), tris, pos, uv, info['vgroup'])
         return dict(orig=ctx['origb64'][ti],
                     new=dict(pos=_b64(vpos, '<f4'), idx=_b64(vtris, '<u4'), uv=_b64(vuv, '<f4'), n=len(vpos), t=len(vtris)),
                     atlas=base64.b64encode(b.getvalue()).decode(),
@@ -275,7 +275,7 @@ def _insomniac_fit(body):
         atl, uv = ATLAS[akey]
         b = io.BytesIO(); Image.fromarray(atl).save(b, 'PNG', compress_level=1)
         info = f['info']
-        vo, vt = viewerlod.outline(('i', gid, body['family']), opos, otris); vtris, vpos, vuv, vgrp = viewerlod.apply(viewerlod.cached_plan((mkey, tuple(parts or ()), 'in'), pos, tris, viewerlod.MODEL_TRIS), tris, pos, uv, f['vgroup'])
+        vo, vt = viewerlod.outline(('i', gid, body['family']), opos, otris); vtris, vpos, vuv, vgrp = viewerlod.apply(viewerlod.cached_plan((mkey, tuple(parts or ()), 'in'), pos, tris, viewerlod.MODEL_TRIS, viewerlod.labels_from_uv(uv)), tris, pos, uv, f['vgroup'])
         return dict(orig=dict(pos=_b64(vo, '<f4'), idx=_b64(vt, '<u4'), n=len(vo), t=len(vt)),
                     new=dict(pos=_b64(vpos, '<f4'), idx=_b64(vtris, '<u4'), uv=_b64(vuv, '<f4'), n=len(vpos), t=len(vtris)),
                     atlas=base64.b64encode(b.getvalue()).decode(),
@@ -310,7 +310,7 @@ def _unity_fit(body):
             atl, cells = atlas.pack(imgs, mdl.uv, mdl.vert_mat, size=1024); ATLAS[akey] = (atl, atlas.remap_uv(mdl.uv, mdl.vert_mat, cells, 1024))
         atl, uv = ATLAS[akey]
         b = io.BytesIO(); Image.fromarray(atl).save(b, 'PNG', compress_level=1)     # PNG: no JPEG smearing of the preview texture
-        vo, vt = viewerlod.outline(('u', gid, body['family']), opos, otris); vtris, vpos, vuv = viewerlod.apply(viewerlod.cached_plan((mkey, tuple(parts or ()), 'us'), pos, mdl.tris, viewerlod.MODEL_TRIS), mdl.tris, pos, uv)
+        vo, vt = viewerlod.outline(('u', gid, body['family']), opos, otris); vtris, vpos, vuv = viewerlod.apply(viewerlod.cached_plan((mkey, tuple(parts or ()), 'us'), pos, mdl.tris, viewerlod.MODEL_TRIS, viewerlod.labels_from_uv(uv)), mdl.tris, pos, uv)
         return dict(orig=dict(pos=_b64(vo, '<f4'), idx=_b64(vt, '<u4'), n=len(vo), t=len(vt)),
                     new=dict(pos=_b64(vpos, '<f4'), idx=_b64(vtris, '<u4'), uv=_b64(vuv, '<f4'), n=len(vpos), t=len(vtris)),
                     atlas=base64.b64encode(b.getvalue()).decode(),
@@ -336,7 +336,7 @@ def _unity_fit_rigged(P, m, mkey, mdl, body, adj):
     b = io.BytesIO(); Image.fromarray(atl).save(b, 'PNG', compress_level=1)     # PNG: no JPEG smearing of the preview texture
     info = f['info']; tris = f['tris']
     if not np.isfinite(pos).all(): raise RuntimeError("ModSwap couldn't fit your model onto this character (the numbers came out invalid). Try another model orientation in the Up/Forward options, or pick a different character.")
-    vo, vt = viewerlod.outline(('r', body['game'], m['label']), opos, ch['otris']); vtris, vpos, vuv, vgrp = viewerlod.apply(viewerlod.cached_plan((mkey, tuple(parts or ()), 'ur'), pos, tris, viewerlod.MODEL_TRIS), tris, pos, uv, f['vgroup'])
+    vo, vt = viewerlod.outline(('r', body['game'], m['label']), opos, ch['otris']); vtris, vpos, vuv, vgrp = viewerlod.apply(viewerlod.cached_plan((mkey, tuple(parts or ()), 'ur'), pos, tris, viewerlod.MODEL_TRIS, viewerlod.labels_from_uv(uv)), tris, pos, uv, f['vgroup'])
     return dict(orig=dict(pos=_b64(vo, '<f4'), idx=_b64(vt, '<u4'), n=len(vo), t=len(vt)),
                 new=dict(pos=_b64(vpos, '<f4'), idx=_b64(vtris, '<u4'), uv=_b64(vuv, '<f4'), n=len(vpos), t=len(vtris)),
                 atlas=base64.b64encode(b.getvalue()).decode(),

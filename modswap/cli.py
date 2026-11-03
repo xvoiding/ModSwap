@@ -14,6 +14,7 @@
   python -m modswap rebuild [--game ID] [--mod ID]   redo your saved mods with the current engine, keeping every setting (installed ones stay installed)
   python -m modswap spiderman suits|slots|install|list|uninstall|restore   Marvel's Spider-Man Remastered (see `spiderman -h`)
   python -m modswap sonic characters|install|list|uninstall|restore      Sonic Frontiers (see `sonic -h`)
+  python -m modswap diagnose --model m.fbx [--textures DIR]   check why a model's textures look wrong (writes diagnose_report.txt + pictures)
   python -m modswap gui                       open the graphical app in your browser
 
 A *profile* describes one game character: where its mesh and textures live and which engine adapter to use.
@@ -174,6 +175,8 @@ def main(argv=None):
     gu = sp.add_parser('gui'); gu.add_argument('--port', type=int, default=8765); gu.add_argument('--no-browser', action='store_true'); gu.set_defaults(f=cmd_gui)
     from .insomniac.cli import add_parser as _sm; _sm(sp)
     from .hedgehog.cli import add_parser as _hh; _hh(sp)
+    dg = sp.add_parser('diagnose', help='check a model\'s textures (writes a report folder)'); dg.add_argument('--model', required=True); dg.add_argument('--textures'); dg.add_argument('--out')
+    dg.set_defaults(f=lambda a: __import__('modswap.diagnose', fromlist=['run']).run(a.model, a.textures, a.out))
     a = p.parse_args(argv); a.f(a)
 
 
