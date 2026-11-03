@@ -244,4 +244,11 @@ Studied from the real game files (sample zips via `tools/collect_samples.py`):
   The classic suit is `characters/hero/hero_spiderman_classic/hero_spiderman_classic.model` (11 MB, original in `g00s001`). The earlier ModSwap test mod redirected it to
   `asset_archive/mods/modswap_test` by adding an archive entry to the toc (a 96-byte-smaller copy of the original), which is how Spider-Man was swapped before.
 * `tools/collect_spiderman.py` pulls the original suit model and everything it references (materials, textures) plus the earlier mod, `tools/collect_samples.py --include/--only` pulls named archives whole.
-NOT done: reading `.model` / `.texture` contents, writing a new model, patching the toc, any Sonic archive reading beyond the header. ALERT (Tkachov) documents the Insomniac formats but is GPL-3.0, so nothing is copied from it.
+UPDATE (second sample round):
+* **Spider-Man archives are `DSAR` block-compressed** (`modswap/insomniac/archive.py`): a block table from byte 32 (u64 decompressed position, u64 compressed position, u32 decompressed size 262,144,
+  u32 compressed size, u32 flags, filler), blocks are LZ4. The toc's asset offsets are positions in the DECOMPRESSED stream, which is why some lay past the end of the file (the first collector read the
+  wrong bytes). Checked on three real archive headers. The earlier mod's archive (`mods/modswap_test`) is a plain, uncompressed asset: 36-byte header, then a `DAT1` block (type 0x98906B9F, 29 sections).
+* **Sonic Frontiers archives are readable** (`modswap/hedgehog/pacx.py`, verified on the real amy / tails / knuckles / sonic / playercommon .pac): outer `PACx403L` -> LZ4 chunk table -> inner `PACx402L`
+  root -> its dependency table names the embedded split (`amy.pac.000`, another LZ4-chunked inner archive) that holds the real data. amy.pac.000: 1 `model` (3.2 MB, magic `NEDARCV1`), `material`s,
+  `uv-anim`/`mat-anim`; sonic.pac: 4 models, 35 DDS textures (1024x1024 BC1/BC5/BC7 with full mip chains). Amy's own colour textures are not in her split (probably her parent archives).
+NOT done: reading the model contents (NEDARCV1 / Spider-Man `.model`), writing a new model, writing a PACx / patching the Spider-Man toc, installing, Sonic Colors. ALERT (Tkachov) documents the Insomniac formats but is GPL-3.0, so nothing is copied from it.
