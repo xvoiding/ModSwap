@@ -70,12 +70,10 @@ def cmd_install(a):
     print('model: %d vertices, %d triangles, %d textures' % (len(m.pos), len(m.tris), sum(i is not None for i in m.images)))
     adj = dict(width=a.width, height=a.height, depth=a.depth, yaw=a.yaw, pitch=a.pitch, roll=a.roll, dx=a.dx, dy=a.dy, dz=a.dz)
     fitted = S.fit(orig, m, up=a.up or getattr(m, 'up', '+Y'), forward=a.forward, scale=a.scale, adjust=adj, atlas_size=a.tex_size)
-    asset, atlas = S.build(orig, fitted, slot, uv_flip_v=a.flip_v)
+    from . import pipeline as PL
+    items, atlas = PL.make_assets(toc, I.ad, path, orig, rows, slot, fitted, textures=not a.no_textures, flip_v=a.flip_v)
+    asset = items[0][1]
     if a.atlas_out: __import__('PIL.Image', fromlist=['Image']).fromarray(atlas).save(a.atlas_out); print('texture picture written to', a.atlas_out)
-    items = [(path, asset)]
-    if not a.no_textures:
-        for role, rgba in textures_for(toc, I.ad, rows, slot, atlas): items.append(rgba)
-        print('textures: colour %dx%d (BC7) + flat normal + neutral gloss written' % (atlas.shape[1], atlas.shape[0]))
     if a.dry_run:
         open(a.dry_run, 'wb').write(asset)
         for k, (tp, data) in enumerate(items[1:]): open('%s.%s' % (a.dry_run, os.path.basename(tp)), 'wb').write(data)
@@ -85,21 +83,6 @@ def cmd_install(a):
     I.install_group(mid, items, name)
     print('installed "%s" over suit %s: model%s' % (name, a.suit, '' if a.no_textures else ' + 3 textures'))
     print('undo with:  python -m modswap spiderman restore'); toc.close()
-
-
-def textures_for(toc, ad, rows, slot, atlas):
-    """-> [(role, (texture path, new asset bytes))] replacing the slot's colour / normal / gloss textures: your picture, a flat normal map, a neutral gloss map"""
-    from . import texture as TX
-    r = next(x for x in rows if x['slot'] == slot); out = []
-    neutral = {'c': None, 'n': (127, 127, 0, 255), 'g': (36, 56, 255, 255)}
-    for role in 'cng':
-        path = next((t for t in r['textures'] if t.lower().endswith('_%s.texture' % role)), None)
-        if path is None: continue
-        i = toc.find(path)
-        if i is None: raise SystemExit('this game has no texture %s' % path)
-        tpl = TX.Texture(toc.read(i, ad))
-        out.append((role, (path, TX.write_like(tpl, atlas) if role == 'c' else TX.flat(tpl, neutral[role]))))
-    return out
 
 
 def cmd_list(a):

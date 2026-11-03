@@ -41,6 +41,10 @@ class Installer:
             shutil.copy2(self.toc_path, self.bak)
         return Toc(open(self.bak, 'rb').read())
 
+    def toc_for_reading(self):
+        """the original toc for READING (toc.BAK when it exists, else the current toc). Unlike original_toc() this never makes a backup."""
+        return Toc(open(self.bak if os.path.isfile(self.bak) else self.toc_path, 'rb').read())
+
     # ---- actions
     def read_original(self, path, toc=None):
         """the ORIGINAL bytes of the asset at `path` (from the .BAK toc, whatever mods are installed)"""

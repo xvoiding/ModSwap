@@ -95,6 +95,9 @@ def find_art(appid):
 
 
 def _project(g):
+    if g.engine == 'insomniac':
+        from .insomniac.project import SpiderManProject
+        return SpiderManProject(g)
     if g.engine == 'unity':
         from .unity.project import UnityProject
         return UnityProject(g)
@@ -115,6 +118,8 @@ def api_characters(gid):
 
     def work(log):
         P = _project(g)
+        if g.engine == 'insomniac':
+            log('reading the game files...'); ch = P.describe(log=log); return dict(characters=ch, items=[], total_files=0, unity=True, rigged=len(ch), hidden=0, engine='2.6')
         if g.engine == 'unity':
             log('reading the game files...'); ch = P.describe(log=log); return dict(characters=ch, items=[], total_files=0, unity=True, rigged=sum(1 for c in ch if c.get('rigged')), hidden=sum(1 for c in ch if c.get('hidden')), engine='2.6')
         log('reading the game files...'); res = P.scan(log=log)
@@ -201,6 +206,7 @@ def api_fit(body):
     from . import atlas, preview, edit
     from PIL import Image
     gid, fam = body['game'], body['family']
+    if _is_insomniac(gid): return _insomniac_fit(body)
     if _is_unity(gid): return _unity_fit(body)
     with LOCK:
         ctx = _ctx(gid, fam); ti = int(body.get('target') or 0)
@@ -231,6 +237,44 @@ def api_fit(body):
 
 def _is_unity(gid):
     return _game(Library(), gid).engine == 'unity'
+
+
+def _is_insomniac(gid):
+    return _game(Library(), gid).engine == 'insomniac'
+
+
+SMFIT = {}
+
+
+def _insomniac_fit(body):
+    """Spider-Man: same answer shape as the Unreal / Unity fit, so the 3D viewer works unchanged"""
+    from . import atlas, edit
+    from PIL import Image
+    gid = body['game']; g = _game(Library(), gid)
+    with LOCK:
+        P = SMFIT.get(gid)
+        if P is None: SMFIT[gid] = P = _project(g)
+        m = P.model(body['family']); parts = body.get('parts') or None
+        mkey, mdl = get_model(body['upload'], parts)
+        adj = {k: float(body.get(k) or (1 if k in ('width', 'height', 'depth') else 0)) for k in ('width', 'height', 'depth', 'yaw', 'pitch', 'roll', 'dx', 'dy', 'dz', 'match_pose')}
+        opos, otris, lo, hi = P.geometry(m)
+        f = P.fit(m, mdl, dict(up=body.get('up') or None, forward=body.get('forward') or None, scale=float(body.get('scale') or 1.0), adjust=adj, edits=body.get('edits') or None))
+        pos = f['pos_view']; tris = f['tris_view']
+        if not np.isfinite(pos).all(): raise RuntimeError("ModSwap couldn't fit your model onto this suit (the numbers came out invalid). Try another model orientation in the Up/Forward options.")
+        akey = (mkey, tuple(parts or ()))
+        if akey not in ATLAS:
+            ATLAS.clear()
+            imgs = [im if im is not None else Image.new('RGB', (64, 64), (160, 160, 160)) for im in mdl.images]
+            atl, cells = atlas.pack(imgs, mdl.uv, mdl.vert_mat, size=1024); ATLAS[akey] = (atl, atlas.remap_uv(mdl.uv, mdl.vert_mat, cells, 1024))
+        atl, uv = ATLAS[akey]
+        b = io.BytesIO(); Image.fromarray(atl).save(b, 'PNG', compress_level=1)
+        info = f['info']
+        return dict(orig=dict(pos=_b64(opos, '<f4'), idx=_b64(otris, '<u4'), n=len(opos), t=len(otris)),
+                    new=dict(pos=_b64(pos, '<f4'), idx=_b64(tris, '<u4'), uv=_b64(uv, '<f4'), n=len(pos), t=len(tris)),
+                    atlas=base64.b64encode(b.getvalue()).decode(),
+                    info=dict(forward=info['forward'], scale=float(info['scale']) * 100.0, pivot=[float(x) * 100.0 for x in info['pivot']], up=info['up']),
+                    groups=dict(names=edit.AUTO_NAMES, ids=_b64(f['vgroup'], 'u1'), pivots=[[float(x) * 100.0 for x in p] for p in f['piv']]),
+                    targets=[m['label']], target=0, height=float(hi[2] - lo[2]))
 
 
 UFIT = {}
@@ -375,7 +419,7 @@ def _unity_apply(g, body, sid, name):
 def api_apply(body):
     lib = Library(); g = _game(lib, body['game']); sid = body['upload']; name = (body.get('name') or 'mod').strip() or 'mod'
     _model_file(sid)
-    if g.engine == 'unity': return _unity_apply(g, body, sid, name)
+    if g.engine in ('unity', 'insomniac'): return _unity_apply(g, body, sid, name)
 
     def work(log):
         parts = body.get('parts') or None
@@ -414,7 +458,7 @@ def api_mod_install(body):
     pak = mods.pak_path(body['game'], body['id']); name = body.get('name') or 'mod'
     running.ensure_closed(g)
     meta = next((m for m in mods.list_mods(body['game']) if m['id'] == body['id']), {})
-    if g.engine == 'unity':
+    if g.engine in ('unity', 'insomniac'):
         def work(log):
             _replace_same_character(g, P, body['id'], meta.get('character') or '', log)
             return dict(installed=P.install_recipe(pak, name, mod_id=body['id'], log=log))
@@ -455,7 +499,7 @@ def _ext(body):
 def api_ext_list(gid):
     from . import extmods
     g = _game(Library(), gid); r = extmods.list_mods(g); loc = extmods.locate(g)
-    r['can_install'] = bool(g.engine != 'unreal' or loc['paks']); r['engine'] = g.engine
+    r['can_install'] = bool(g.engine not in ('unreal', 'insomniac') or (g.engine == 'unreal' and loc['paks'])); r['engine'] = g.engine
     return r
 
 

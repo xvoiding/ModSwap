@@ -3,7 +3,7 @@ import os, re, glob, mmap, struct
 from dataclasses import dataclass, field
 
 # engines the swap pipeline can write today
-SUPPORTED = {'unreal', 'unity'}
+SUPPORTED = {'unreal', 'unity', 'insomniac'}
 
 
 @dataclass
@@ -20,7 +20,7 @@ class EngineInfo:
     @property
     def label(self):
         names = {'unreal': 'Unreal Engine', 'unity': 'Unity', 'godot': 'Godot', 'source': 'Source', 'source2': 'Source 2', 'gamemaker': 'GameMaker',
-                 'rpgmaker': 'RPG Maker', 'cryengine': 'CryEngine', 'unknown': 'Unknown engine'}
+                 'rpgmaker': 'RPG Maker', 'cryengine': 'CryEngine', 'insomniac': 'Insomniac Engine', 'unknown': 'Unknown engine'}
         return (names.get(self.engine, self.engine) + (' ' + self.version if self.version else '')).strip()
 
 
@@ -120,6 +120,9 @@ def detect_engine(root):
         for f in files:
             names.add(f.lower())
             if f.lower().endswith('.exe'): exes.append(f)
+    # ---- Insomniac (Marvel's Spider-Man): everything is read through asset_archive\toc
+    if os.path.isfile(os.path.join(root, 'asset_archive', 'toc')) or os.path.isfile(os.path.join(root, 'asset_archive', 'toc.BAK')):
+        return EngineInfo('insomniac', '', 'asset_archive\\toc')
     # ---- Unreal
     paks = find_paks(root)
     if paks or any(e.lower().endswith('-shipping.exe') for e in exes) or ('engine' in dirs_seen and 'binaries' in dirs_seen):

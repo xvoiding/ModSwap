@@ -41,15 +41,20 @@ def skins_from_autorig(skin_i, skin_w):
     return out
 
 
-def fit(orig, user, up='+Y', forward=None, scale=1.0, adjust=None, edits=None, lod0_meshes=23, atlas_size=2048, log=print):
-    """-> dict(pos, nrm, uv, tris, skin, atlas (H,W,3) uint8, info) all in Spider-Man's frame (metres, y up, +z forward), ready for build()"""
+def lod0_rig(orig, lod0_meshes=23):
+    """-> (rig dict for skin.autorig, LOD0 vertex positions in the model's frame)"""
     meshes = orig.meshes(); st = orig.streams()
     ref = np.concatenate([st['pos'][m.vertex_start:m.vertex_start + m.vertex_count] for m in meshes[:lod0_meshes] if m.vertex_count])
-    rg = R.rig_from_model(orig, ref)
+    return R.rig_from_model(orig, ref), ref
+
+
+def fit(orig, user, up='+Y', forward=None, scale=1.0, adjust=None, edits=None, lod0_meshes=23, atlas_size=2048, log=print, rig=None):
+    """-> dict(pos, nrm, uv, tris, skin, atlas (H,W,3) uint8, info) all in Spider-Man's frame (metres, y up, +z forward), ready for build()"""
+    rg = rig if rig is not None else lod0_rig(orig, lod0_meshes)[0]
     r = skin.autorig(user.pos, user.nrm, rg, up=up, forward=forward, scale_mult=scale, adjust=adjust, edits=edits, tris=user.tris)
     log('auto-rig: scale %.3f, facing %s' % (r['info']['scale'], r['info']['forward']))
     pos = R.to_model_space(r['pos']); nrm = R.to_model_space(r['nrm'])
-    tris = edit.keep_triangles(user.tris, r['hidden']).copy()
+    tris = edit.keep_triangles(user.tris, r['hidden']).copy(); tris_view = tris.copy()
     tris = tris[:, [0, 2, 1]]                                   # y/z swap mirrors the model: keep the triangles facing outwards
     fn = np.cross(pos[tris[:, 1]] - pos[tris[:, 0]], pos[tris[:, 2]] - pos[tris[:, 0]])
     if np.sign((fn * nrm[tris].sum(1)).sum(1)).mean() < 0: tris = tris[:, [0, 2, 1]]
@@ -58,7 +63,7 @@ def fit(orig, user, up='+Y', forward=None, scale=1.0, adjust=None, edits=None, l
     images = [im if im is not None else Image.new('RGB', (64, 64), (160, 160, 160)) for im in images]
     atl, cells = atlas.pack(images, user.uv, user.vert_mat, size=atlas_size)
     uv = atlas.remap_uv(user.uv, user.vert_mat, cells, atlas_size)
-    return dict(pos=pos, nrm=nrm, uv=uv, tris=tris, skin=skins_from_autorig(r['skin_i'], r['skin_w']), atlas=atl, info=r['info'])
+    return dict(pos=pos, nrm=nrm, uv=uv, tris=tris, skin=skins_from_autorig(r['skin_i'], r['skin_w']), atlas=atl, info=r['info'], pos_rig=r['pos'], tris_view=tris_view, vgroup=r['vgroup'], piv=r['piv'], rig=rg)
 
 
 def build(orig, fitted, material, uv_flip_v=False, log=print):
