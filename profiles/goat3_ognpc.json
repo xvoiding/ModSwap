@@ -1,0 +1,184 @@
+{
+ "name": "Goat Simulator 3 - Non-Player Character (OGNPC alt-goat)",
+ "engine": "ue4",
+ "pak_version": "V11",
+ "mount": "../../../",
+ "sk_format": {
+  "exp_idx": 0,
+  "rtmask": true
+ },
+ "atlas": 2048,
+ "targets": [
+  {
+   "name": "OGNPC SportyMan",
+   "mesh": "Goat2/Content/Characters/Player/OGNPC/Meshes/SK_NPC_SportyMan",
+   "ref_from": [
+    "Goat2/Content/Characters/Player/OGNPC/Meshes/SK_NPC_SportyMan"
+   ],
+   "textures": [
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/T_SportyMan_BC",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/T_SportyMan_Anton",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/T_SportyMan_Armin",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/CSN/Bartek_df",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/T_SportyMan_Joel",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/T_SportyMan_Jogim",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/T_SportyMan_Molle",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/T_SportyMan_Ocke",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/T_SportyMan_Paul",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/CSN/Santi_df",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/CSN/Sebbe_df",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/T_SportyMan_Stefan",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/T_SportyMan_Wasse",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    }
+   ]
+  },
+  {
+   "name": "OGNPC CasualMan",
+   "mesh": "Goat2/Content/Characters/Player/OGNPC/Meshes/SK_NPC_CasualMan",
+   "ref_from": [
+    "Goat2/Content/Characters/Player/OGNPC/Meshes/SK_NPC_CasualMan"
+   ],
+   "textures": [
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/T_CasualMan_BC",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/T_CasualMan_Gstfs",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/CSN/Oliver_df",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/CSN/Philip_df",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/T_CasualMan_Stek",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/CSN/William_df",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/CSN/Zipper_df",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    }
+   ]
+  },
+  {
+   "name": "OGNPC CasualGirl",
+   "mesh": "Goat2/Content/Characters/Player/OGNPC/Meshes/SK_NPC_CasualGirl",
+   "ref_from": [
+    "Goat2/Content/Characters/Player/OGNPC/Meshes/SK_NPC_CasualGirl"
+   ],
+   "textures": [
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/T_CasualGirl_BC",
+     "format": "bc3",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/CSN/Elin_df",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/T_CasualGirl_Marie",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    },
+    {
+     "path": "Goat2/Content/Characters/Player/OGNPC/Textures/CSN/Moa_df",
+     "format": "bc1",
+     "role": "diffuse",
+     "size": 2048
+    }
+   ]
+  }
+ ]
+}

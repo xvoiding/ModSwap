@@ -1,0 +1,17 @@
+{
+  "name": "Just Die Already - Wally",
+  "engine": "ue4",
+  "ue_version": "4.25",
+  "pak_version": "V9",
+  "mount": "../../../",
+  "mesh": "JDGame/Content/Art/PlayerCharacters/Wally/SK_Wally",
+  "up": "+Y",
+  "atlas": 2048,
+  "textures": [
+    {"path": "JDGame/Content/Art/PlayerCharacters/Wally/Textures/T_WallyDefault_BC", "format": "bc1", "role": "diffuse"},
+    {"path": "JDGame/Content/Art/PlayerCharacters/Wally/Textures/T_WallyDefault_N",  "format": "bc5", "role": "normal"},
+    {"path": "JDGame/Content/Art/PlayerCharacters/Wally/Textures/T_WallyNaked_BC",   "format": "bc1", "role": "diffuse"},
+    {"path": "JDGame/Content/Art/PlayerCharacters/Wally/Textures/T_WallyNaked_N",    "format": "bc5", "role": "normal"},
+    {"path": "JDGame/Content/Art/PlayerCharacters/Wally/Textures/T_Wally_Hurt_BC",   "format": "bc3", "role": "overlay"}
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "name": "Goat Simulator 3 - NPCs (all humans)",
+  "engine": "ue4", "ue_version": "4.27/5.x cook", "pak_version": "V11", "mount": "../../../",
+  "sk_format": {"exp_idx": 0, "rtmask": true},
+  "atlas": 2048,
+  "targets": [
+    {
+      "name": "NPC male body",
+      "mesh": "Goat2/Content/Characters/NPC/Animations/SK_NPC_Male_01",
+      "ref_from": ["Goat2/Content/Characters/NPC/Head/Meshes/SK_NPC_Male_Head_01", "Goat2/Content/Characters/NPC/LowerBody/Meshes/SK_NPC_Male_Bottom_Jeans"],
+      "textures": [
+        {"path": "Goat2/Content/Characters/NPC/Head/Textures/T_NPC_Male_Skin_FullBody_BC",    "format": "bc1", "role": "diffuse", "size": 2048},
+        {"path": "Goat2/Content/Characters/NPC/Head/Textures/T_NPC_Male_Skin_FullBody_MTRAO", "format": "bc1", "role": "flat", "color": [0, 128, 255, 255], "size": 256},
+        {"path": "Goat2/Content/Characters/NPC/Head/Textures/T_NPC_Male_Skin_FullBody_N",     "format": "bc5", "role": "normal", "size": 256}
+      ]
+    },
+    {
+      "name": "NPC female body",
+      "mesh": "Goat2/Content/Characters/NPC/Animations/SK_NPC_Female_01",
+      "ref_from": ["Goat2/Content/Characters/NPC/Head/Meshes/SK_NPC_Female_Head_01", "Goat2/Content/Characters/NPC/LowerBody/Meshes/SK_NPC_Female_Bottom_Jeans"],
+      "textures": [
+        {"path": "Goat2/Content/Characters/NPC/Head/Textures/T_NPC_Female_Skin_FullBody_BC",    "format": "bc1", "role": "diffuse", "size": 2048},
+        {"path": "Goat2/Content/Characters/NPC/Head/Textures/T_NPC_Female_Skin_FullBody_MTRAO", "format": "bc1", "role": "flat", "color": [0, 128, 255, 255], "size": 256},
+        {"path": "Goat2/Content/Characters/NPC/Head/Textures/T_NPC_Female_Skin_FullBody_N",     "format": "bc5", "role": "normal", "size": 256}
+      ]
+    }
+  ],
+  "hide_glob": [
+    "Goat2/Content/Characters/NPC/Head/Meshes/SK_*",
+    "Goat2/Content/Characters/NPC/UpperBody/Meshes/SK_*",
+    "Goat2/Content/Characters/NPC/LowerBody/Meshes/SK_*"
+  ]
+}
