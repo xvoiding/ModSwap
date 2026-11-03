@@ -42,19 +42,32 @@ def slots(model, toc, ad):
     return out
 
 
-def pick_single_texture_slot(rows, suit):
-    """The slot whose material is the plain 'colour + normal + gloss' kind with its three textures in the suit's own folder: replacing its colour texture re-skins that part
-    without touching anything shared with other suits. Prefers a name with 'rubber' / 'suit' / 'body', then the most triangles. -> slot number or None"""
-    best = None
+def folder_of(suit):
+    """the asset folder a character's own textures live in: hero_spiderman_<suit> for suits, npc_<x> for the other characters"""
+    s = suit.lower(); return s if s.startswith('npc_') else 'hero_spiderman_%s' % s
+
+
+def slot_choices(rows, suit):
+    """-> [(tier, preferred name, triangles, slot)] best first. Only slots whose colour texture is in the character's OWN folder qualify (replacing a shared texture would re-skin other characters).
+    tier 3 = the plain 'colour + normal + gloss' kind (the colour texture is the whole look), 2 = another shader with its own colour + normal + gloss, 1 = another shader with its own colour texture."""
+    out = []; folder = folder_of(suit)
     for r in rows:
-        tex = [t.lower() for t in r['textures']]
-        simple = 'char_basic_normal_gloss' in r['shader'].lower() and any(t.endswith('_c.texture') for t in tex) and any(t.endswith('_n.texture') for t in tex) and any(t.endswith('_g.texture') for t in tex)
-        own = [t for t in tex if 'hero_spiderman_%s' % suit.lower() in t]
-        if not (simple and own): continue
+        tex = [t.lower().replace('\\', '/') for t in r['textures']]; sh = r['shader'].lower()
+        own_c = [t for t in tex if t.endswith('_c.texture') and folder in t]
+        if not own_c: continue
+        has = lambda role: any(t.endswith('_%s.texture' % role) and folder in t for t in tex)
+        plain = 'basic_normal_gloss' in sh and 'alpha' not in sh and 'detail' not in sh and 'eye' not in sh
+        tier = 3 if plain and has('n') and has('g') else 2 if has('n') and has('g') else 1
+        own = [t for t in tex if folder in t]
         pref = any(w in ' '.join(own) for w in ('rubber', 'suit', 'body'))
-        key = (pref, r['triangles'])
-        if best is None or key > best[0]: best = (key, r['slot'])
-    return None if best is None else best[1]
+        out.append((tier, pref, r['triangles'], r['slot']))
+    return sorted(out, reverse=True)
+
+
+def pick_single_texture_slot(rows, suit):
+    """The slot whose colour texture to replace: it re-skins that part without touching anything shared with other characters. Prefers the plain 'colour + normal + gloss' kind, then a name with
+    'rubber' / 'suit' / 'body', then the most triangles; suits that have no plain material fall back to their most-used material that has its own colour texture. -> slot number or None"""
+    c = slot_choices(rows, suit); return c[0][3] if c else None
 
 
 def colour_texture(rows, slot):

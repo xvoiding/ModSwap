@@ -73,3 +73,12 @@ if __name__ == '__main__':
     for k, f in list(globals().items()):
         if k.startswith('test_'): f(); n += 1
     print('%d passed' % n)
+
+
+def test_report_describes_the_suit_and_its_choices():
+    g = real_game()
+    if g is None: print('   (no real samples: skipped)'); return
+    out_file = os.path.join(tempfile.mkdtemp(), 'r.txt')
+    out = run('spiderman', '--dir', g, 'report', '--out', out_file)
+    txt = open(out_file, encoding='utf-8').read()
+    assert 'character classic' in txt and 'ModSwap re-skins slot: 3' in txt and 'mesh slots' in txt and 'texture hero_spiderman_classic_rubber_c.texture: format' in txt and 'report written' in out, txt[:2000]

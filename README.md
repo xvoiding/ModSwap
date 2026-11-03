@@ -375,3 +375,9 @@ Bugs this found and fixed:
 * Pictures: 16-bit / float / palette / alpha / grey modes are converted properly (`to_rgb`); pictures over 2048 px are shrunk when read (twelve different 4096x4096 pictures: 4.7 s, 850 MB instead of
   several GB); a file used by many materials is decoded once; materials that share one picture share one atlas cell (full detail); NaN uvs are made harmless.
 * Not covered: `.blend`, `.3ds`, USD, Alembic (they go through Blender, which must be installed), vertex-colour-only models (shown as their average colour), a second uv set.
+
+### Spider-Man: more characters, and the `report` command
+The game's index stores only hashes of asset paths, so ModSwap lists a character when its path is guessed from `modswap/insomniac/names.py` (every guess is checked against the real index, so only
+models that exist show up): suits at `characters/hero/hero_spiderman_<id>/`, other characters (Mr. Negative, Kingpin, Rhino ...) at `characters/npc/npc_<id>/`. Suits whose material is not the plain
+"colour + normal + gloss" kind fall back to their most-used material that has its own colour texture. `python -m modswap spiderman report [--suit punk] [--npcs]` writes `suits_report.txt`
+(mesh table, materials, textures of every suit) for diagnosing a suit that looks wrong.

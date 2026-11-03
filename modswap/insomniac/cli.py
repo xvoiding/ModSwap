@@ -1,6 +1,7 @@
 """Command line for Marvel's Spider-Man Remastered:
 
   python -m modswap spiderman suits                              which suits this game has
+  python -m modswap spiderman report [--suit punk]               a text report of every suit's materials (send it when a suit looks wrong or is refused)
   python -m modswap spiderman slots   --suit classic             the suit's material slots (what texture each part uses)
   python -m modswap spiderman install --suit classic --model my.fbx [--name X] [--dry-run OUT.model]
   python -m modswap spiderman list                               what ModSwap has installed
@@ -49,6 +50,45 @@ def cmd_slots(a):
     for r in rows: print('slot %2d  %7d tris  %-34s %s' % (r['slot'], r['triangles'], r['shader'].split('/')[-1][:34], ', '.join(t.split('/')[-1] for t in r['textures'][:3])))
     print('slot ModSwap would use: %s' % MT.pick_single_texture_slot(rows, a.suit))
     toc.close()
+
+
+def cmd_report(a):
+    """one text file describing every suit's materials, mesh table and the textures it would replace: what to send when a suit looks wrong or is refused"""
+    import re, struct
+    from . import materials as MT, model as M, texture as TX
+    from .install import find_suits, suit_model_path
+    I = _install(a); toc = I.original_toc(); out = []
+    suits = [a.suit] if a.suit else find_suits(toc, npcs=a.npcs)
+    out.append('ModSwap Spider-Man report: %d character(s): %s' % (len(suits), ', '.join(suits)))
+    for suit in suits:
+        out.append('\n' + '=' * 100); out.append('character %s  (%s)' % (suit, suit_model_path(suit)))
+        try:
+            i = toc.find(suit_model_path(suit)); raw = toc.read(i, I.ad); orig = M.Model(raw); rows = MT.slots(orig, toc, I.ad)
+            ms = orig.meshes(); lod = orig.section(M.TAG_LOOK)
+            out.append('model %d bytes, %d mesh slots, %d joints, material records found: %d' % (len(raw), len(ms), len(orig.joints()) if hasattr(orig, 'joints') else -1, len(rows)))
+            out.append('LOD look table (u16 start,count x6 per row): ' + ' | '.join(' '.join('%d,%d' % struct.unpack_from('<HH', lod, 4 * (r + k)) for k in range(6)) for r in (0, 8, 16)))
+            out.append('mesh slots (index: material, triangles, vertices):')
+            out.append('  ' + '  '.join('%d:m%d/%dt/%dv' % (k, m.material, m.index_count // 3, m.vertex_count) for k, m in enumerate(ms) if m.vertex_count))
+            off, size = orig.sections[MT.TAG_MATERIAL_LIST]; out.append('material list section: offset %d size %d; first 192 bytes after it: %s' % (off, size, raw[off + M.DAT1_AT:off + M.DAT1_AT + 192].hex()))
+            paths = sorted(set(w.decode('latin1') for w in re.findall(rb'[\x20-\x7e]{8,200}\.(?:model|actor|skeleton|material|anim)', raw)))
+            if paths: out.append('path-like strings inside the model: ' + ', '.join(paths[:40]))
+            for r in rows:
+                out.append('  slot %2d  %6d tris  %s  | %s' % (r['slot'], r['triangles'], r['shader'].split('/')[-1], ' ; '.join(t.split('/')[-1] for t in r['textures'])))
+            ch = MT.slot_choices(rows, suit); out.append('choices (tier, preferred name, triangles, slot): %s' % ch[:6])
+            slot = MT.pick_single_texture_slot(rows, suit); out.append('ModSwap re-skins slot: %s' % slot)
+            if slot is not None:
+                row = next(x for x in rows if x['slot'] == slot); out.append('  its textures (all): ' + ' ; '.join(row['textures']))
+                try: out.append('  its material asset bytes: ' + toc.read(row['material'], I.ad).hex())
+                except Exception as e: out.append('  (material unreadable: %s)' % e)
+                for t in row['textures']:
+                    ti = toc.find(t)
+                    if ti is None: out.append('  texture %s: not in this game' % t); continue
+                    try: x = TX.Texture(toc.read(ti, I.ad)); out.append('  texture %s: format %d, full %dx%d, stored %dx%d, mips %d, slices %d, stream budget %d, %d bytes' % (t.split('/')[-1], x.fmt, x.full_w, x.full_h, x.width, x.height, x.mips, x.slices, x.stream, len(x.data)))
+                    except Exception as e: out.append('  texture %s: %s' % (t.split('/')[-1], e))
+        except Exception as e:
+            out.append('  could not read: %s: %s' % (type(e).__name__, e))
+    toc.close(); text = '\n'.join(out); open(a.out, 'w', encoding='utf-8').write(text)
+    print(text if len(text) < 6000 else text[:6000] + '\n...'); print('\nreport written to %s (%d bytes)' % (os.path.abspath(a.out), len(text)))
 
 
 def _install(a):
@@ -111,6 +151,7 @@ def add_parser(sp):
     s.add_argument('--dir', help="the game folder (default: %s)" % DEFAULT_DIR)
     t = s.add_subparsers(dest='action', required=True)
     for n, f in (('suits', cmd_suits), ('list', cmd_list), ('restore', cmd_restore)): t.add_parser(n).set_defaults(f=f)
+    r = t.add_parser('report'); r.add_argument('--suit'); r.add_argument('--npcs', action='store_true', help='also the non-suit characters'); r.add_argument('--out', default='suits_report.txt'); r.set_defaults(f=cmd_report)
     x = t.add_parser('slots'); x.add_argument('--suit', default='classic'); x.set_defaults(f=cmd_slots)
     u = t.add_parser('uninstall'); u.add_argument('--id', required=True); u.set_defaults(f=cmd_uninstall)
     i = t.add_parser('install'); i.add_argument('--suit', default='classic'); i.add_argument('--model', required=True); i.add_argument('--textures'); i.add_argument('--name')

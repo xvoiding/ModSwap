@@ -7,17 +7,20 @@ game back exactly (the .BAK is not touched again). A small state file asset_arch
 import os, json, shutil
 from .toc import Toc, patched_raw, to_file_bytes, path_id
 
-SUIT_WORDS = ['classic', 'advanced', 'advanced2', 'advanced_2', 'noir', 'punk', 'spiderpunk', 'scarlet', 'scarlet2', 'scarlet_2', 'stealth', 'iron', 'ironspider', 'iron_spider',
-              'crimson', 'negative', 'velocity', 'vintage', 'secret_war', 'secretwar', 'fear_itself', 'fearitself', 'electric', 'webwarrior', 'web_warrior', 'upgraded', 'spirit',
-              'anti_ock', 'antiock', 'homemade', 'ultimate', 'ps4', 'ps4_advanced', 'miles', 'base', 'undies', 'arachnid', 'spider_clan', 'spiderclan', 'dark', 'bodyguard']
+from .names import SUITS as SUIT_WORDS, NPCS as NPC_WORDS
 
 
-def suit_model_path(suit): return 'characters/hero/hero_spiderman_%s/hero_spiderman_%s.model' % (suit, suit)
+def suit_model_path(suit):
+    """suits: characters/hero/hero_spiderman_<id>/...; everyone else (ids that start with npc_): characters/npc/npc_<x>/..."""
+    if suit.startswith('npc_'): return 'characters/npc/%s/%s.model' % (suit, suit)
+    return 'characters/hero/hero_spiderman_%s/hero_spiderman_%s.model' % (suit, suit)
 
 
-def find_suits(toc, extra=()):
-    """suit ids whose model exists in this toc (ids are hashes of paths, so a list of likely names is tried; only real hits are returned)"""
-    return [w for w in dict.fromkeys(list(SUIT_WORDS) + list(extra)) if toc.find(suit_model_path(w)) is not None]
+def find_suits(toc, extra=(), npcs=True):
+    """character ids whose model exists in this toc (ids are hashes of paths, so a list of likely names is tried; only real hits are returned): the suits first, then the other characters"""
+    out = [w for w in dict.fromkeys(list(SUIT_WORDS) + list(extra)) if toc.find(suit_model_path(w)) is not None]
+    if npcs: out += sorted(w for w in dict.fromkeys('npc_' + n for n in NPC_WORDS) if toc.find(suit_model_path(w)) is not None)
+    return out
 
 
 class Installer:

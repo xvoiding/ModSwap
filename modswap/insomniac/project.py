@@ -4,6 +4,7 @@ import os, io, json, zipfile, tempfile, shutil
 import numpy as np
 from . import model as M, rig as R, swap as S, materials as MT, pipeline as PL
 from .install import Installer, find_suits, suit_model_path
+from .names import TITLES as NPC_TITLES
 
 TITLES = dict(classic='Classic Suit', noir='Spider-Man Noir Suit', punk='Spider-Punk Suit', scarlet='Scarlet Spider Suit', stealth='Stealth (Big Time) Suit', ironspider='Iron Spider Suit',
               velocity='Velocity Suit', vintage='Vintage Comic Suit', secretwar='Secret War Suit', fearitself='Fear Itself Suit', antiock='Anti-Ock Suit', base='Spider-Man (no suit)',
@@ -11,23 +12,33 @@ TITLES = dict(classic='Classic Suit', noir='Spider-Man Noir Suit', punk='Spider-
               webwarrior='Web Warrior Suit', upgraded='Upgraded Suit', spirit='Spirit Suit', homemade='Homemade Suit', ultimate='Ultimate Suit', miles='Miles Morales')
 
 
-def _title(suit): return TITLES.get(suit) or suit.replace('_', ' ').title() + ' Suit'
+SUIT_TITLES = dict(mk4='Spider-Armor MK IV Suit', mk1='Spider-Armor MK I Suit', mk2='Spider-Armor MK II Suit', mk3='Spider-Armor MK III Suit', **{'2099': 'Spider-Man 2099 Black Suit'}, black='Black Suit', bagman='Bombastic Bag-Man Suit',
+                   wrestler='Wrestler Suit', spiderverse='Spider-Verse Suit', raimi='Raimi Suit', mcu='MCU Suit', tasm='Amazing Spider-Man Suit', futurefoundation='Future Foundation Suit', cyborg='Cyborg Suit',
+                   nwh='No Way Home Suit', ffh='Far From Home Suit')
+
+
+def _title(suit):
+    if suit.startswith('npc_'):
+        n = suit[4:]; return NPC_TITLES.get(n) or n.replace('_', ' ').title()
+    return TITLES.get(suit) or SUIT_TITLES.get(suit) or suit.replace('_', ' ').title() + ' Suit'
 
 
 class SpiderManProject:
     def __init__(self, game, cache_root=None):
-        self.game = game; self.I = Installer(game.root); self._suits = {}; self.notes = []
+        self.game = game; self.I = Installer(game.root); self._suits = {}; self._list = None; self.notes = []
 
     # ------------------------------------------------------------ the game's suits
     def suits(self):
-        toc = self.I.toc_for_reading()
-        try: return find_suits(toc)
-        finally: toc.close()
+        if self._list is None:                                                  # (the name lookup takes a second: once per project, not once per fit)
+            toc = self.I.toc_for_reading()
+            try: self._list = find_suits(toc)
+            finally: toc.close()
+        return list(self._list)
 
     def describe(self, log=print):
         out = []
         for i, s in enumerate(self.suits()):
-            out.append(dict(index=i, label=_title(s), meshes=1, body=[os.path.basename(suit_model_path(s))], layered=0, note='suit model + its textures', rigged=True, cat='character', hidden=False))
+            out.append(dict(index=i, label=_title(s), meshes=1, body=[os.path.basename(suit_model_path(s))], layered=0, note=('character model + its textures' if s.startswith('npc_') else 'suit model + its textures'), rigged=True, cat='character', hidden=False))
         if not out: raise ValueError('no suits found in this game folder (asset_archive\\toc is unreadable or from another game version)')
         log('%d suits' % len(out)); return out
 
@@ -45,7 +56,7 @@ class SpiderManProject:
             i = toc.find(m['path']); orig = M.Model(toc.read(i, self.I.ad)); rows = MT.slots(orig, toc, self.I.ad)
         finally: toc.close()
         rg, ref = S.lod0_rig(orig); slot = MT.pick_single_texture_slot(rows, m['suit'])
-        if slot is None: raise ValueError('this suit has no plain colour+normal+gloss material ModSwap can re-skin')
+        if slot is None: raise ValueError("this character has no material with its own colour texture that ModSwap can re-skin. Run  runtime\\python.exe -m modswap spiderman report --suit %s  and send me suits_report.txt" % m['suit'])
         P = []; T = []; off = 0; idx = orig.indices(); st = orig.streams()
         for mesh in orig.meshes()[:23]:
             if not mesh.vertex_count: continue
@@ -118,4 +129,4 @@ class SpiderManProject:
     def restore(self):
         had = [r['name'] for r in self.I.installed() if r['target'].endswith('.model')]; self.I.restore(); return had
 
-    def release(self): self._suits.clear()
+    def release(self): self._suits.clear(); self._list = None
