@@ -69,6 +69,92 @@ def _weld(pos_idx, uv_idx, P, UV, tri_mat_c):
     return pos, uv, tris
 
 
+MAX_PICTURE = 2048                                                         # no atlas is bigger, so a bigger picture only costs memory (twenty 8k pictures would need gigabytes)
+
+
+def to_rgb(im):
+    """any PIL picture -> an RGB picture: 16-bit and float greys are scaled (a plain convert() would clip them white), palette / alpha / CMYK / greys are converted, and it is shrunk to MAX_PICTURE"""
+    try:
+        if im.mode in ('I;16', 'I;16L', 'I;16B', 'I;16N'): im = Image.fromarray((np.asarray(im, np.float64) / 257.0).clip(0, 255).astype(np.uint8))
+        elif im.mode == 'I': a = np.asarray(im, np.float64); im = Image.fromarray((a / (256.0 if a.max() > 255 else 1.0)).clip(0, 255).astype(np.uint8))
+        elif im.mode == 'F': a = np.asarray(im, np.float64); im = Image.fromarray((a * (255.0 if a.max() <= 1.0 else 1.0)).clip(0, 255).astype(np.uint8))
+        im = im.convert('RGB')
+    except Exception: im = im.convert('RGB')
+    if max(im.size) > MAX_PICTURE:
+        k = -(-max(im.size) // MAX_PICTURE)
+        im = im.reduce(k)                                                  # (a box average: much faster than a resize, and plenty for a picture that is shrunk again)
+        if max(im.size) > MAX_PICTURE:
+            f = MAX_PICTURE / float(max(im.size)); im = im.resize((max(1, int(im.width * f)), max(1, int(im.height * f))), Image.LANCZOS)
+    return im
+
+
+_PICTURES = {}
+
+
+def open_picture(src):
+    """a file path or bytes -> RGB picture (or None when it can not be read). A file used by many materials is decoded once (each caller gets its own copy, loaders attach wrap modes to them)."""
+    import io
+    key = None
+    if isinstance(src, str):
+        try: key = (os.path.abspath(src), os.path.getmtime(src), os.path.getsize(src))
+        except OSError: return None
+        if key in _PICTURES: return _PICTURES[key].copy()
+    try:
+        im = Image.open(src if isinstance(src, str) else io.BytesIO(src))
+        if im.format == 'JPEG' and max(im.size) > 2 * MAX_PICTURE: im.draft('RGB', (MAX_PICTURE, MAX_PICTURE))        # (decode a big JPEG at a reduced size)
+        im.load(); im = to_rgb(im)
+    except Exception: return None
+    if key is not None:
+        if len(_PICTURES) > 12: _PICTURES.pop(next(iter(_PICTURES)))
+        _PICTURES[key] = im
+    return im.copy()
+
+
+def _near_dirs(dirs, depth=3, limit=4000):
+    """the given folders, then their sub-folders and the sub-folders of their parent (a model in 'source' with its pictures in a sibling 'textures' folder)"""
+    out = []; seen = set()
+    def add(d):
+        d = os.path.abspath(d)
+        if d not in seen and os.path.isdir(d): seen.add(d); out.append(d)
+    for d in dirs:
+        if d: add(d)
+    n = 0
+    for d in [x for x in dirs if x]:
+        for root in (os.path.abspath(d), os.path.dirname(os.path.abspath(d))):
+            if len(root) < 4: continue                                         # never walk a whole drive
+            base = root.count(os.sep)
+            for dp, dn, _ in os.walk(root):
+                if dp.count(os.sep) - base >= depth: dn[:] = []
+                add(dp); n += 1
+                if n > limit: break
+    return out
+
+
+def find_picture(cands, dirs):
+    """a picture named by the file (its path as written first, then the bare file name anywhere near the model, any capitalisation) -> RGB PIL image or None"""
+    names = [str(c).replace('\\', '/') for c in cands if c]
+    for d in [x for x in dirs if x]:                                           # the path as written, relative to the model
+        for n in names:
+            p = os.path.join(d, n)
+            if os.path.isfile(p):
+                im = open_picture(p)
+                if im is not None: return im
+    bare = [os.path.basename(n) for n in names]
+    for d in _near_dirs(dirs):
+        low = {f.lower(): f for f in os.listdir(d)}
+        for n in bare:
+            if n.lower() in low:
+                im = open_picture(os.path.join(d, low[n.lower()]))
+                if im is not None: return im
+    return None
+
+
+def _mtl_path(rest):
+    """the file of a 'map_Kd [options] file' line: the whole text when there are no options (spaces allowed), else the last word (options are -s 1 1 1, -o .., -clamp on ...)"""
+    parts = rest.split()
+    return rest.strip() if not any(x.startswith('-') for x in parts) else parts[-1]
+
+
 def load_obj(path, texture_dir=None):
     P, UV, faces = [], [], []   # faces: list of (mat_id, [(vi,ti),...])
     mats = {}; cur = 0; mtl_files = []
@@ -91,28 +177,29 @@ def load_obj(path, texture_dir=None):
     ti = np.array([[max(c[1], 0) for c in f[1]] for f in faces]).reshape(-1)
     tri_mat = np.array([f[0] for f in faces], np.int32)
     pos, uv, tris = _weld(pi, ti, P, UV, tri_mat)
-    uv = uv.copy(); uv[:, 1] = 1.0 - uv[:, 1]                    # obj v-up -> image v-down
+    uv = np.nan_to_num(uv.copy(), nan=0.0, posinf=0.0, neginf=0.0); uv[:, 1] = 1.0 - uv[:, 1]                    # obj v-up -> image v-down
     # materials / textures
-    base = os.path.dirname(path); tex = {}
+    base = os.path.dirname(path); tex = {}; kd = {}
     for mf in mtl_files:
         mp = os.path.join(base, mf)
+        if not os.path.exists(mp): mp = os.path.join(base, os.path.basename(mf.replace('\\', '/')))
         if not os.path.exists(mp): continue
         name = None
         for l in open(mp, errors='ignore'):
             l = l.strip()
             if l.startswith('newmtl'): name = l.split(None, 1)[1]
-            elif l.lower().startswith('map_kd') and name: tex[name] = l.split(None, 1)[1].split()[-1]
+            elif l.lower().startswith('map_kd') and name: tex[name] = _mtl_path(l.split(None, 1)[1])
+            elif l.lower().startswith('kd ') and name:
+                try: kd[name] = tuple(int(round(max(0.0, min(1.0, float(x))) * 255)) for x in l.split()[1:4])
+                except ValueError: pass
     names = sorted(mats, key=mats.get); images = []
     for n in names:
         f = tex.get(n)
         if f is None:   # obj/mtl material names often differ slightly (g0m0 vs g0m0.007): prefix match, then single-texture fallback
             cands = [v for k, v in tex.items() if k.startswith(n) or n.startswith(k)]
             f = cands[0] if cands else (list(tex.values())[0] if len(tex) == 1 else None)
-        img = None
-        if f:
-            for d in filter(None, [base, texture_dir]):
-                p = os.path.join(d, os.path.basename(f.replace('\\', '/')))
-                if os.path.exists(p): img = Image.open(p).convert('RGB'); break
+        img = find_picture([f], [base, texture_dir]) if f else None
+        if img is None and n in kd and not f: img = Image.new('RGB', (64, 64), kd[n])             # no picture named: the material's plain colour
         images.append(img)
     nrm = _smooth_normals(pos, tris)
     return Model(pos, nrm, uv, tris, tri_mat, images, names)
@@ -191,8 +278,7 @@ def guess_images(model, dirs):
     if not files: return
     color = [f for f in files if not any(k in os.path.basename(f).lower() for k in _NOT_COLOR)] or files
     def open_(f):
-        try: return Image.open(f).convert('RGB')
-        except Exception: return None
+        return open_picture(f)
     def toks(t): return {x for x in re.split(r'[^a-z]+', re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', t).lower()) if len(x) > 2 and x not in ('mat', 'mtl', 'material', 'dif', 'diff', 'tex', 'col', 'png', 'jpg')}
     used = set()
     NOISE = {'textures', 'texture', 'images', 'image', 'img', 'copy'}
@@ -223,6 +309,7 @@ def from_raw(raw, texture_dir=None, path=''):
     if raw.get('per_corner'): pos, nrm, uv, tris = _weld_corners(raw); tm = raw['tri_mat']
     else: pos, nrm, uv, tris, tm = raw['pos'], raw['nrm'], raw['uv'], raw['tris'], raw['tri_mat']
     if nrm is None: nrm = _smooth_by_position(pos, tris)
+    uv = np.nan_to_num(np.asarray(uv, np.float64), nan=0.0, posinf=0.0, neginf=0.0)
     m = Model(np.asarray(pos, np.float64), np.asarray(nrm, np.float64), np.asarray(uv, np.float64), np.asarray(tris, np.int32), np.asarray(tm, np.int32),
               list(raw['images']), list(raw['mat_names']), raw.get('tri_part'), list(raw.get('part_names', [])), raw.get('up', '+Y'), path)
     guess_images(m, [os.path.dirname(os.path.abspath(path)) if path else None, texture_dir])
@@ -232,7 +319,27 @@ def from_raw(raw, texture_dir=None, path=''):
 
 
 def load_model(path, texture_dir=None):
-    return split_by_material(_load_model(path, texture_dir))
+    return normalise_tiling(split_by_material(_load_model(path, texture_dir)))
+
+
+def normalise_tiling(m):
+    """Fold tiled uvs back toward 0..1: a texture that repeats can have each triangle's uvs moved by whole tiles without changing how it looks, which keeps every material's uv range
+    small (a model tiled 60 times would otherwise need a cell 60 tiles wide). Mirrored axes move by 2 tiles (to keep the mirroring), clamped axes do not move. A vertex that two
+    triangles want in different tiles is duplicated."""
+    if len(m.tris) == 0: return m
+    from .atlas import wrap_of
+    modes = [wrap_of(im) if im is not None else ('repeat', 'repeat') for im in m.images]
+    uvc = m.uv[m.tris]; mn = uvc.min(1); shift = np.zeros((len(m.tris), 2), np.int64)
+    for ax in (0, 1):
+        for mode in ('repeat', 'mirror'):
+            sel = np.array([modes[t][ax] == mode for t in m.tri_mat], bool) if len(modes) else np.zeros(len(m.tris), bool)
+            if sel.any(): step = 1 if mode == 'repeat' else 2; shift[sel, ax] = (np.floor(mn[sel, ax] / step) * step).astype(np.int64)
+    shift = np.clip(shift, -100000, 100000)
+    if not shift.any(): return m
+    corner = np.stack([m.tris.reshape(-1).astype(np.int64), np.repeat(shift[:, 0], 3), np.repeat(shift[:, 1], 3)], 1)
+    uniq, inv = np.unique(corner, axis=0, return_inverse=True); inv = inv.reshape(-1)
+    uv = m.uv[uniq[:, 0]] - uniq[:, 1:3]
+    return Model(m.pos[uniq[:, 0]], m.nrm[uniq[:, 0]], uv, inv.reshape(-1, 3).astype(np.int32), m.tri_mat, m.images, m.mat_names, m.tri_part, m.part_names, m.up, m.source)
 
 
 def split_by_material(m):

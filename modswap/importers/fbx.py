@@ -193,42 +193,15 @@ def _layer(geo, kind):
 def _pick(layer, corner, vert, poly):
     """per-corner lookup into a layer element"""
     vals, ix, mp = layer
-    sel = {'ByPolygonVertex': corner, 'ByVertice': vert, 'ByVertex': vert, 'ByPolygon': poly, 'ByControllPoint': vert}.get(mp)
+    sel = {'ByPolygonVertex': corner, 'ByVertice': vert, 'ByVertex': vert, 'ByPolygon': poly, 'ByControllPoint': vert, 'ByControlPoint': vert}.get(mp)
     if sel is None: sel = np.zeros_like(corner)         # AllSame
     if ix is not None: sel = ix[np.minimum(sel, len(ix) - 1)]
     return vals[np.minimum(sel, len(vals) - 1)]
 
 
-def _near_dirs(dirs, depth=3, limit=4000):
-    """the given folders, then their sub-folders and the sub-folders of their parent (a model in 'source' with its pictures in a sibling 'textures' folder)"""
-    out = []; seen = set()
-    def add(d):
-        d = os.path.abspath(d)
-        if d not in seen and os.path.isdir(d): seen.add(d); out.append(d)
-    for d in dirs:
-        if d: add(d)
-    n = 0
-    for d in [x for x in dirs if x]:
-        for root in (os.path.abspath(d), os.path.dirname(os.path.abspath(d))):
-            if len(root) < 4: continue                                         # never walk a whole drive
-            base = root.count(os.sep)
-            for dp, dn, _ in os.walk(root):
-                if dp.count(os.sep) - base >= depth: dn[:] = []
-                add(dp); n += 1
-                if n > limit: break
-    return out
-
-
 def _find_image(cands, dirs):
-    from PIL import Image
-    names = [os.path.basename(str(c).replace('\\', '/')) for c in cands if c]
-    for d in _near_dirs(dirs):
-        low = {f.lower(): f for f in os.listdir(d)}
-        for n in names:
-            if n.lower() in low:
-                try: return Image.open(os.path.join(d, low[n.lower()])).convert('RGB')
-                except Exception: pass
-    return None
+    from ..modelio import find_picture
+    return find_picture(cands, dirs)
 
 
 def load(path, texture_dir=None):
@@ -280,12 +253,17 @@ def load(path, texture_dir=None):
                 cands += [v.val('RelativeFilename'), v.val('Filename'), v.val('FileName')]
                 content = v.get('Content')
                 if content is not None and content.props and isinstance(content.props[0], (bytes, bytearray)) and len(content.props[0]) > 16 and img is None:
-                    try: img = Image.open(io.BytesIO(content.props[0])).convert('RGB')
-                    except Exception: pass
+                    from ..modelio import open_picture
+                    img = open_picture(bytes(content.props[0]))
             if img is None: img = _find_image(cands, dirs)
         if img is None:
             p = _props70(mn); c = p.get('DiffuseColor') or p.get('Diffuse')
             if c and len(c) >= 3: col = tuple(int(round(max(0, min(1, float(x))) * 255)) for x in c[:3])
+        if img is not None and best:                                                     # FBX texture wrap modes: 0 repeat, 1 clamp
+            mode = lambda v: 'clamp' if v == 1 else 'repeat'
+            props = _props70(best[2]); wu = best[2].val('WrapModeU', props.get('WrapModeU', [0])[0] if props.get('WrapModeU') else 0); wv = best[2].val('WrapModeV', props.get('WrapModeV', [0])[0] if props.get('WrapModeV') else 0)
+            try: img.wrap = (mode(int(wu)), mode(int(wv)))
+            except (TypeError, ValueError): pass
         mat_cache[mid] = (name, img, col)
         return mat_cache[mid]
 

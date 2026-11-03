@@ -6,11 +6,50 @@ TRIMESH_EXT = {'.glb', '.gltf', '.vrm', '.dae', '.ply', '.stl', '.off', '.3mf', 
 BLENDER_EXT = {'.blend', '.3ds', '.abc', '.usd', '.usda', '.usdc', '.usdz', '.x3d', '.wrl', '.x', '.fbx', '.dae', '.ma'}
 
 
+def _gltf_json(path):
+    """the JSON part of a .glb / .gltf / .vrm (or None)"""
+    import json, struct
+    try:
+        d = open(path, 'rb').read()
+        if d[:4] == b'glTF':
+            n = struct.unpack_from('<I', d, 12)[0]; return json.loads(d[20:20 + n].decode('utf-8'))
+        return json.loads(d.decode('utf-8'))
+    except Exception: return None
+
+
+def _gltf_extras(js):
+    """material name -> dict(factor (linear rgb), wrap (u, v), transform (offset, rotation, scale)): what the glTF says about HOW the base colour texture is used"""
+    out = {}
+    if not js: return out
+    WR = {10497: 'repeat', 33071: 'clamp', 33648: 'mirror'}
+    for mt in js.get('materials', []):
+        pbr = mt.get('pbrMetallicRoughness', {}) or {}; info = dict(factor=pbr.get('baseColorFactor'), wrap=('repeat', 'repeat'), transform=None); bt = pbr.get('baseColorTexture')
+        if bt is not None:
+            tex = js.get('textures', [])[bt.get('index', 0)] if bt.get('index', 0) < len(js.get('textures', [])) else {}
+            if 'sampler' in tex and tex['sampler'] < len(js.get('samplers', [])):
+                sm = js['samplers'][tex['sampler']]; info['wrap'] = (WR.get(sm.get('wrapS', 10497), 'repeat'), WR.get(sm.get('wrapT', 10497), 'repeat'))
+            tt = (bt.get('extensions') or {}).get('KHR_texture_transform')
+            if tt: info['transform'] = (tt.get('offset', [0, 0]), tt.get('rotation', 0.0), tt.get('scale', [1, 1]))
+        out.setdefault(mt.get('name'), info)
+    return out
+
+
+def _srgb_tint(img, factor):
+    """multiply a picture by a glTF baseColorFactor (given in LINEAR space) the way a renderer does: decode sRGB, multiply, encode"""
+    f = np.clip(np.asarray(factor[:3], np.float64), 0, 1)
+    if (f > 0.999).all(): return img
+    a = np.asarray(img, np.float64) / 255.0; lin = np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4) * f
+    out = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.power(np.maximum(lin, 0), 1 / 2.4) - 0.055)
+    from PIL import Image as _I
+    return _I.fromarray((np.clip(out, 0, 1) * 255 + 0.5).astype(np.uint8))
+
+
 def load_trimesh(path, texture_dir=None):
     import trimesh
     from PIL import Image
     ext = os.path.splitext(path)[1].lower()
     scene = trimesh.load(path, force='scene', file_type='glb' if ext == '.vrm' else None)
+    extras = _gltf_extras(_gltf_json(path)) if ext in ('.glb', '.gltf', '.vrm') else {}
     P, N, UV, TR, TM, TP = [], [], [], [], [], []; names = []; images = []; mats = []; voff = 0
     for node in list(scene.graph.nodes_geometry):
         T, gname = scene.graph[node]; m = scene.geometry[gname].copy(); m.apply_transform(T)
@@ -22,14 +61,23 @@ def load_trimesh(path, texture_dir=None):
             mat = vis.material
             for a in ('baseColorTexture', 'image'):
                 im = getattr(mat, a, None)
-                if im is not None: img = im.convert('RGB'); break
+                if im is not None:
+                    from ..modelio import to_rgb
+                    img = to_rgb(im); break
             if img is None and getattr(mat, 'baseColorFactor', None) is not None:
                 col = tuple(int(x) for x in np.array(mat.baseColorFactor)[:3])
         elif getattr(vis, 'kind', '') in ('vertex', 'face'):
             try: col = tuple(int(x) for x in np.array(m.visual.to_color().vertex_colors)[:, :3].mean(0))
             except Exception: pass
         if uv is None: uv = np.zeros((len(m.vertices), 2))
-        uv = uv.copy(); uv[:, 1] = 1.0 - uv[:, 1]
+        uv = np.nan_to_num(uv.copy(), nan=0.0, posinf=0.0, neginf=0.0); uv[:, 1] = 1.0 - uv[:, 1]                  # (glTF uv space: v down, like the pictures)
+        ex = extras.get(getattr(getattr(vis, 'material', None), 'name', None))
+        if ex is not None and img is not None:
+            if ex['factor'] is not None: img = _srgb_tint(img, ex['factor'])
+            img.wrap = ex['wrap']
+            if ex['transform'] is not None:                                                                   # KHR_texture_transform: uv' = T * R * S * uv
+                (ox, oy), rot, (sx, sy) = ex['transform']; c, sn = np.cos(rot), np.sin(rot); u0, v0 = uv[:, 0] * sx, uv[:, 1] * sy
+                uv = np.stack([c * u0 + sn * v0 + ox, -sn * u0 + c * v0 + oy], 1)
         if img is None and col is not None: img = Image.new('RGB', (64, 64), col)
         try: vn = np.array(m.vertex_normals, float)          # normals stored in the file (computing them needs scipy: skip, we smooth ourselves)
         except Exception: vn = None

@@ -23,19 +23,43 @@ class Cell:
     src_h: int
 
 
-def uv_extents(uv, mat, n_mats, pad_frac=0.004):
-    """Per-material UV bounds, always at least 0..1 along each axis a texture is tiled."""
+TILE_PIXELS = 4096 * 4096                                                   # most pixels a tiled cell is built from (bigger tilings are built from a smaller copy of the picture)
+
+
+def uv_extents(uv, mat, n_mats, pad_frac=0.004, wraps=None):
+    """Per-material UV bounds, at least 0..1 along each axis a texture is tiled. A CLAMPED axis only needs 0..1 (everything outside is the edge pixel, and remap_uv clamps to it). On other axes
+    a few stray vertices far outside (a common modelling leftover) do not stretch the cell: when the range is wider than 4 tiles the extreme 0.2% (at least 2 values) on each side are
+    ignored (the strays are clamped to the cell edge by remap_uv)."""
     out = []
     for m in range(n_mats):
         k = mat == m
         if not k.any():
             out.append((0.0, 0.0, 1.0, 1.0)); continue
-        lo = uv[k].min(0) - pad_frac
-        hi = uv[k].max(0) + pad_frac
+        u = uv[k]; lo = u.min(0) - pad_frac; hi = u.max(0) + pad_frac
+        for ax in (0, 1):
+            if hi[ax] - lo[ax] > 4:
+                v = np.sort(u[:, ax]); cut = max(2, int(0.002 * len(v))); cut = min(cut, (len(v) - 1) // 2); lo[ax] = v[cut] - pad_frac; hi[ax] = v[-1 - cut] + pad_frac
+            if wraps is not None and wraps[m][ax] == 'clamp': lo[ax], hi[ax] = 0.0, 1.0
+            if hi[ax] - lo[ax] > 16: c = 0.5 * (lo[ax] + hi[ax]); lo[ax], hi[ax] = c - 8, c + 8
         u0 = min(0.0, np.floor(lo[0] * 4) / 4); v0 = min(0.0, np.floor(lo[1] * 4) / 4)
         u1 = max(1.0, np.ceil(hi[0] * 4) / 4);  v1 = max(1.0, np.ceil(hi[1] * 4) / 4)
+        if wraps is not None:
+            if wraps[m][0] == 'clamp': u0, u1 = 0.0, 1.0
+            if wraps[m][1] == 'clamp': v0, v1 = 0.0, 1.0
         out.append((u0, v0, u1, v1))
     return out
+
+
+def wrap_of(im):
+    """how a picture repeats outside 0..1: ('repeat'|'mirror'|'clamp' for u, same for v). Set by the loaders that know (glTF samplers, FBX wrap modes); repeat otherwise."""
+    return getattr(im, 'wrap', ('repeat', 'repeat'))
+
+
+def _wrap_index(n, a, b, mode):
+    """source pixel index for every pixel of the uv range [a, b] of a picture that is n pixels wide per unit"""
+    count = max(1, int(round((b - a) * n))); t = a + (np.arange(count) + 0.5) / n
+    f = (1.0 - np.abs((t % 2.0) - 1.0)) if mode == 'mirror' else np.clip(t, 0.0, 1.0) if mode == 'clamp' else t % 1.0
+    return np.minimum((f * n).astype(np.int64), n - 1)
 
 
 def _same_picture_groups(images):
@@ -43,7 +67,7 @@ def _same_picture_groups(images):
     import hashlib
     seen = {}; grp = []
     for im in images:
-        key = (im.size, im.mode, hashlib.md5(im.tobytes()).hexdigest()); grp.append(seen.setdefault(key, len(seen)))
+        key = (im.size, im.mode, wrap_of(im), hashlib.md5(im.tobytes()).hexdigest()); grp.append(seen.setdefault(key, len(seen)))
     return np.array(grp, np.int64), len(seen)
 
 
@@ -61,7 +85,7 @@ def pack(images, uv, mat, size=2048, gutter=4):
 
 def _pack_distinct(images, uv, mat, size=2048, gutter=4):
     n = len(images)
-    ext = uv_extents(uv, mat, n)
+    ext = uv_extents(uv, mat, n, wraps=[wrap_of(im) for im in images])
     # desired cell size at 1:1 texel density
     want = [((u1 - u0) * im.width, (v1 - v0) * im.height) for (u0, v0, u1, v1), im in zip(ext, images)]
     # find a global scale s so everything fits in size x size using shelf packing
@@ -75,11 +99,11 @@ def _pack_distinct(images, uv, mat, size=2048, gutter=4):
             if y + h > size: return None
             pos[i] = (x, y, w, h); x += w; rowh = max(rowh, h)
         return pos
-    lo, hi, best = 0.05, 1.0, None
+    lo, hi, best = 0.002, 1.0, None
     p = try_pack(1.0)
     if p is not None: best = (1.0, p)
     else:
-        for _ in range(24):
+        for _ in range(30):
             mid = (lo + hi) / 2; p = try_pack(mid)
             if p is None: hi = mid
             else: lo = mid; best = (mid, p)
@@ -91,15 +115,13 @@ def _pack_distinct(images, uv, mat, size=2048, gutter=4):
         u0, v0, u1, v1 = ext[i]
         im = images[i].convert('RGB')
         cw, ch = w - 2 * gutter, h - 2 * gutter
-        # tile source to cover the cell's uv rect, then resize to the cell
-        tu, tv = int(np.ceil(u1 - u0)), int(np.ceil(v1 - v0))
-        src = np.array(im)
-        # shift so that u0 maps to column 0 (wrap)
-        reps = np.tile(src, (tv, tu, 1))
-        # offset for fractional u0/v0
-        ox = int(round((u0 - np.floor(u0)) * im.width)); oy = int(round((v0 - np.floor(v0)) * im.height))
-        reps = np.roll(reps, (-oy, -ox), axis=(0, 1))
-        reps = reps[: int(round((v1 - v0) * im.height)), : int(round((u1 - u0) * im.width))]
+        # the part of the (repeated / mirrored / clamped) picture that the cell's uv rect covers, then resized to the cell
+        src = np.array(im); wu, wv = wrap_of(images[i]); W0, H0 = im.width, im.height
+        total = (u1 - u0) * W0 * (v1 - v0) * H0
+        if total > TILE_PIXELS:                                                # a huge tiling: build it from a smaller copy of the picture
+            f = (TILE_PIXELS / total) ** 0.5; src = np.array(im.resize((max(1, int(W0 * f)), max(1, int(H0 * f))), Image.LANCZOS))
+        H1, W1 = src.shape[:2]
+        reps = src[_wrap_index(H1, v0, v1, wv)][:, _wrap_index(W1, u0, u1, wu)]
         cell = np.array(Image.fromarray(reps).resize((cw, ch), Image.LANCZOS))
         padded = np.pad(cell, ((gutter, gutter), (gutter, gutter), (0, 0)), mode='edge')
         atlas[y:y + h, x:x + w] = padded
@@ -112,8 +134,9 @@ def remap_uv(uv, mat, cells, size):
     for m, c in enumerate(cells):
         if c is None: continue
         k = mat == m
-        out[k, 0] = (c.x + (uv[k, 0] - c.u0) / (c.u1 - c.u0) * c.w) / size
-        out[k, 1] = (c.y + (uv[k, 1] - c.v0) / (c.v1 - c.v0) * c.h) / size
+        uc = np.clip(uv[k, 0], c.u0, c.u1); vc = np.clip(uv[k, 1], c.v0, c.v1)                # (a stray uv outside the cell stays inside its own cell)
+        out[k, 0] = (c.x + (uc - c.u0) / (c.u1 - c.u0) * c.w) / size
+        out[k, 1] = (c.y + (vc - c.v0) / (c.v1 - c.v0) * c.h) / size
     return out
 
 

@@ -361,3 +361,17 @@ Also in the app: Sonic Frontiers is detected as "Hedgehog Engine 2", its swappab
   starts with "starting ..." (the first run after an update / after rebuilding `runtime` compiles and virus-scans thousands of files and can take a minute).
 * The engine writes `engine.log` into the ModSwap config folder (`%APPDATA%\\ModSwap\\engine.log`): when each job was queued, started, how long it waited, every log line it printed, and the full error if it failed.
   Send that file (and `%APPDATA%\\ModSwap\\modswap.log`) when something hangs.
+
+## 2.16.5 - textures: every kind of textured model is now tested against ground truth
+`tests/texmatrix.py` + `tests/test_texture_matrix.py` generate models whose colour at every triangle corner is known, write them as OBJ / GLB / glTF / Collada / FBX (ASCII and binary, 32 and 64-bit),
+load them through ModSwap's real loaders, run the atlas the viewer and the builds use, and compare every corner with what the SOURCE file says; the viewer's own fit answer is checked the same way.
+Bugs this found and fixed:
+* OBJ: pictures in a sub-folder (`map_Kd textures/x.png`) were never found (the material turned grey); `-s 1 1 1`-style map options; a plain `Kd` colour when no picture; case differences; both now use
+  the same nearby-folder search as FBX (`modelio.find_picture`).
+* FBX: UV mapping `ByControlPoint` (the correct spelling) was unknown (every corner got one uv); texture wrap modes (repeat / clamp) were ignored.
+* glTF / GLB: `baseColorFactor` tint, sampler wrap modes (repeat / mirror / clamp) and `KHR_texture_transform` were ignored.
+* Heavy tiling (a uv range of +-60) or one stray uv (900, -700) made the atlas packer fail ("textures cannot be packed"). Tiled uvs are folded back per triangle (`modelio.normalise_tiling`), a clamped
+  axis only needs 0..1, stray extremes are ignored for the cell size and clamped into it, and the packer can no longer fail.
+* Pictures: 16-bit / float / palette / alpha / grey modes are converted properly (`to_rgb`); pictures over 2048 px are shrunk when read (twelve different 4096x4096 pictures: 4.7 s, 850 MB instead of
+  several GB); a file used by many materials is decoded once; materials that share one picture share one atlas cell (full detail); NaN uvs are made harmless.
+* Not covered: `.blend`, `.3ds`, USD, Alembic (they go through Blender, which must be installed), vertex-colour-only models (shown as their average colour), a second uv set.
