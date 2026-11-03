@@ -61,3 +61,13 @@ def write_like(template, rgba):
 def flat_like(template, rgba):
     t = template if isinstance(template, Dds) else Dds(template)
     return write_like(t, np.tile(np.array(rgba, np.uint8), (8, 8, 1)))
+
+
+def blank_from_header(header):
+    """a Dds with the given header (128 bytes, or 148 with a DX10 extension) and zeroed pixels: the template for a texture that only exists as a header (streaming stub)"""
+    h = bytes(header); cc = h[84:88]; h = h[:148] if cc == b'DX10' else h[:128]
+    height, width = struct.unpack_from('<II', h, 12); mips = max(1, struct.unpack_from('<I', h, 28)[0])
+    kind = DXGI.get(struct.unpack_from('<I', h, 128)[0]) if cc == b'DX10' else FOURCC.get(cc)
+    if kind is None or len(h) < (148 if cc == b'DX10' else 128): raise ValueError('unsupported DDS header in a streaming stub')
+    n = sum(((max(1, width >> i) + 3) // 4) * ((max(1, height >> i) + 3) // 4) * kind[1] for i in range(mips))
+    return Dds(h + b'\0' * n)

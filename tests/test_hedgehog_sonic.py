@@ -4,7 +4,7 @@ import os, sys, struct, json, time, tempfile, shutil, hashlib, io, contextlib, b
 import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 cfg = tempfile.mkdtemp(prefix='ms_cfg_'); os.environ['XDG_CONFIG_HOME'] = cfg; os.environ['APPDATA'] = cfg
-from modswap.hedgehog import pacx, pacwrite, dds, hemodel as H, hewrite as W, sonic, needle
+from modswap.hedgehog import pacx, pacwrite, innerwrite, dds, hemodel as H, hewrite as W, sonic, needle
 from modswap.hedgehog.install import Installer
 from humanoid_fixture import humanoid
 
@@ -79,6 +79,28 @@ def test_pac_rewrite_keeps_everything_but_the_changed_bytes():
     assert sum(a != c for a, c in zip(q.root.data, p.root.data)) < 400, 'the root differs only in the split size / position fields'
 
 
+def test_a_file_can_grow_inside_a_pac_and_nothing_else_changes():
+    if CHAR_DIR is None: return SKIP()
+    raw = open(os.path.join(CHAR_DIR, 'amy.pac'), 'rb').read(); p = pacx.Pacx(raw); name = p.split_names()[0]; sp = p.split(name)
+    e = next(x for x in sp.entries if x.name == 'chr_amy_cloth_abd'); blob = bytes(np.random.default_rng(1).integers(0, 256, 349700, dtype=np.uint8))
+    big = innerwrite.append_entries(sp, {e.index: blob}); sp2 = pacx.Inner(big, name)
+    assert sp2.read(sp2.entries[e.index]) == blob and all(sp.read(a) == sp2.read(b) for a, b in zip(sp.entries, sp2.entries) if not a.is_proxy and a.index != e.index)
+    assert [x.name for x in sp.entries] == [x.name for x in sp2.entries], 'names (the trees) are untouched'
+    out = pacwrite.rebuild(p, {name: big}); q = pacx.Pacx(out); n_old, n_new = len(p.root.deps()[0][4]), len(q.root.deps()[0][4])
+    assert n_new > n_old and q.split(name).data == big and [(x.uid, x.size) for x in q.root.entries] == [(x.uid, x.size) for x in p.root.entries], 'more chunks: the chunk table moved, everything reads back'
+
+
+def test_streaming_stubs_become_full_textures_for_amy_knuckles_tails():
+    if CHAR_DIR is None: return SKIP()
+    for f, host in (('amy', 'chr_amy_cloth'), ('knuckles', 'chr_knuckles_cloth'), ('tails', 'chr_tails_cloth')):
+        raw = open(os.path.join(CHAR_DIR, f + '.pac'), 'rb').read(); ch = sonic.Character(raw); assert ch.host == host and ch.texture_status() == (True, '')
+        tpl, stub = ch.template(ch.textures()['abd']); assert stub and tpl.width >= 256
+        new, rep = ch.build(ch.fit(humanoid(), up='+Y', forward='+Z', log=lambda *a: None), log=lambda *a: None)
+        a, b = pacx.Pacx(raw), pacx.Pacx(new); sa, sb = a.split(a.split_names()[0]), b.split(b.split_names()[0])
+        names = sorted(e.name for e, g in zip(sa.entries, sb.entries) if sa.read(e) != sb.read(g)); assert names == sorted(['chr_' + f, host + '_abd', host + '_nrm', host + '_prm']), names
+        d = dds.Dds(sb.read(next(e for e in sb.entries if e.name == host + '_abd'))); assert d.width == tpl.width and d.mips == tpl.mips and d.kind == tpl.kind
+
+
 def test_real_textures_have_exactly_the_size_the_dds_rule_predicts():
     if CHAR_DIR is None: return SKIP()
     p = pacx.Pacx.open(os.path.join(CHAR_DIR, 'sonic.pac')); s = p.split(p.split_names()[0]); n = 0
@@ -127,12 +149,12 @@ def test_command_line_and_installer_on_a_fake_game_folder():
             except SystemExit as e:
                 if e.code not in (None, 0): return out.getvalue() + 'EXIT: %s' % e.code
         return out.getvalue()
-    o = run('sonic', '--dir', g, 'characters'); assert 'Sonic' in o and 'ready' in o and 'stub' in o, o
+    o = run('sonic', '--dir', g, 'characters'); assert 'Sonic' in o and 'Amy' in o and 'model only' not in o, o
     before = sha(os.path.join(cd, 'sonic.pac')); out = os.path.join(g, 'x.pac')
     assert 'nothing installed' in run('sonic', '--dir', g, 'install', '--character', 'sonic', '--model', 'x.fbx', '--forward', '+Z', '--dry-run', out) and sha(os.path.join(cd, 'sonic.pac')) == before
     o = run('sonic', '--dir', g, 'install', '--character', 'sonic', '--model', 'x.fbx', '--forward', '+Z', '--name', 'Test'); assert 'installed "Test"' in o, o
     assert sha(os.path.join(cd, 'sonic.pac')) != before and 'Test' in run('sonic', '--dir', g, 'list')
-    assert 'streamed' in run('sonic', '--dir', g, 'install', '--character', 'amy', '--model', 'x.fbx', '--forward', '+Z'), 'a character whose textures are streamed gets a clear message'
+    o = run('sonic', '--dir', g, 'install', '--character', 'amy', '--model', 'x.fbx', '--forward', '+Z', '--dry-run', out); assert 'nothing installed' in o and pacx.Pacx.open(out).split_names(), o
     run('sonic', '--dir', g, 'restore'); assert sha(os.path.join(cd, 'sonic.pac')) == before and 'nothing installed' in run('sonic', '--dir', g, 'list')
 
 
@@ -155,7 +177,7 @@ def test_app_server_whole_flow_for_sonic():
         assert not j['error'], j['error']; return j['result']
     from modswap.games.library import Library
     gj = server._game_json(Library().games['sf']); assert gj['engine'] == 'hedgehog2' and gj['supported'] is True, gj
-    ch = wait(server.api_characters('sf'))['characters']; assert ch[0]['label'] == 'Sonic' and ch[0]['rigged'], ch
+    ch = wait(server.api_characters('sf'))['characters']; assert [c['label'] for c in ch] == ['Sonic'] and ch[0]['rigged'], ch
     body = dict(game='sf', family=ch[0]['index'], upload='up1', up='+Y', forward='+Z', scale=1.0)
     f = server.api_fit(body); pos = np.frombuffer(base64.b64decode(f['new']['pos']), '<f4').reshape(-1, 3); opos = np.frombuffer(base64.b64decode(f['orig']['pos']), '<f4').reshape(-1, 3)
     assert len(pos) == f['new']['n'] and np.isfinite(pos).all() and 80 < f['height'] < 130, f['height']

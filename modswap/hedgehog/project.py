@@ -24,16 +24,34 @@ class SonicProject:
             self._chars[rel] = sonic.Character(self.I.read_original(rel))
         return self._chars[rel]
 
-    def scan(self, log=print):
-        if self._list is not None: return self._list
-        out = []; files = self._files()
+    def _cache_path(self):
+        try:
+            from ..games import library
+            d = os.path.join(library.config_dir(), 'cache', getattr(self.game, 'id', 'game')); os.makedirs(d, exist_ok=True); return os.path.join(d, 'hedgehog_scan.json')
+        except Exception: return None
+
+    def scan(self, log=print, force=False):
+        """the swappable characters. Reading every .pac takes a while, so the answer is cached per file (size + modified time) and a file is only read again when it changed."""
+        if self._list is not None and not force: return self._list
+        cp = self._cache_path(); cache = {}
+        if cp and os.path.isfile(cp) and not force:
+            try: cache = json.load(open(cp)).get('files', {})
+            except Exception: cache = {}
+        out = []; files = self._files(); fresh = {}
         for i, f in enumerate(files):
-            rel = os.path.join(CHAR_DIR, f)
-            try:
-                ch = self._character(rel); ok, why = ch.texture_status()
-            except Exception: continue                                          # not a character file (effects, scenery ...)
-            out.append(dict(rel=rel, stem=os.path.splitext(f)[0], label=_title(os.path.splitext(f)[0]), model=ch.name, ok=ok, why=why, meshes=len(ch.model0.meshes()), host=ch.host))
-            log('%d / %d: %s' % (i + 1, len(files), f))
+            rel = os.path.join(CHAR_DIR, f); fp = os.path.join(self.I.char_dir, f); stamp = [os.path.getsize(fp), int(os.path.getmtime(fp))]
+            hit = cache.get(rel) if cache.get(rel, {}).get('stamp') == stamp and not self.I.installed() else None      # (a file with a mod installed is read through the backup: re-read it)
+            if hit is None:
+                try:
+                    ch = self._character(rel); ok, why = ch.texture_status()
+                    row = dict(rel=rel, stem=os.path.splitext(f)[0], label=_title(os.path.splitext(f)[0]), model=ch.name, ok=ok, why=why, meshes=len(ch.model0.meshes()), host=ch.host)
+                except Exception: row = None                                  # not a character file (effects, scenery ...)
+                self._chars.pop(rel, None); hit = dict(stamp=stamp, row=row); log('%d / %d: %s' % (i + 1, len(files), f))
+            fresh[rel] = hit
+            if hit['row']: out.append(hit['row'])
+        if cp and not self.I.installed():
+            try: json.dump(dict(files=fresh), open(cp, 'w'))
+            except Exception: pass
         self._list = out; return out
 
     def describe(self, log=print):

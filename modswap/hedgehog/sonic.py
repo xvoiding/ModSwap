@@ -8,7 +8,7 @@ the same size and format, and the .pac is written again (pacwrite). Nothing move
 """
 import re, struct
 import numpy as np
-from . import pacx, pacwrite, needle, hemodel as H, hewrite as W, dds
+from . import pacx, pacwrite, needle, innerwrite, hemodel as H, hewrite as W, dds
 
 NEUTRAL = {'nrm': (130, 126, 255, 255), 'prm': (27, 83, 21, 212)}       # flat normal map (BC5 keeps R,G), neutral params (the average of the original)
 ROLES = ('abd', 'nrm', 'prm')
@@ -39,15 +39,25 @@ class Character:
         for m in re.finditer(rb'chr_[a-z0-9_]+?_(abd|nrm|prm)(?![a-z0-9_])', raw): out.setdefault(m.group(1).decode(), m.group().decode())
         return out
 
+    def template(self, name):
+        """-> (Dds template, is_stub). A texture is either a full DDS file or a small 'NTSI' streaming stub (header only; the pixels live in texture_streaming\\*.ntsp)."""
+        e = self.by_name.get(('dds', name))
+        if e is None: raise NotSupported('texture %s is not in this .pac' % name)
+        raw = self.split.read(e)
+        if raw[:4] == b'DDS ': return dds.Dds(raw), False
+        if raw[:4] == b'NTSI':
+            i = raw.find(b'DDS ')
+            if i < 0: raise NotSupported('texture %s is a streaming stub without a header' % name)
+            return dds.blank_from_header(raw[i:]), True
+        raise NotSupported('texture %s has an unknown format' % name)
+
     def texture_status(self):
-        """-> (ok, message): the three textures must be real DDS files in this .pac (some characters keep only small stubs here and stream the pixels from elsewhere)"""
+        """-> (ok, message): the three textures of the host material must be readable as DDS files or streaming stubs"""
         t = self.textures()
         for r in ROLES:
             if r not in t: return False, 'the material %s has no %s texture' % (self.host, r)
-            e = self.by_name.get(('dds', t[r]))
-            if e is None: return False, 'texture %s is not in this .pac' % t[r]
-            try: dds.Dds(self.split.read(e))
-            except ValueError: return False, 'texture %s is only a stub here (the pixels are streamed from another file)' % t[r]
+            try: self.template(t[r])
+            except (NotSupported, ValueError) as ex: return False, str(ex)
         return True, ''
 
     # ------------------------------------------------------------ fit / build
@@ -63,7 +73,7 @@ class Character:
         new_chunks = []; reports = []
         for k, ch in enumerate(self.chunks):
             out, rep = W.fill_fitting(ch, fitted, log=lambda *a, k=k: log('level of detail %d: %s' % (k, a[0]))); new_chunks.append(out); reports.append(rep)
-        arch = bytearray(self.split.data); put = lambda e, data: arch.__setitem__(slice(e.offset, e.offset + e.size), data)
+        arch = bytearray(self.split.data); put = lambda e, data: arch.__setitem__(slice(e.offset, e.offset + e.size), data); grown = {}
         if bytes(self.blob[:8]) == needle.SIG_ARCHIVE:
             _, es = needle.parse(self.blob); it = iter(new_chunks)
             model_bytes = needle.build([(e.sig, e.name, next(it) if e.sig == needle.SIG_MODEL else e.data(self.blob)) for e in es])
@@ -73,7 +83,12 @@ class Character:
         if textures:
             tex = self.textures(); atlas = np.asarray(fitted['atlas'], np.uint8)
             for r in ROLES:
-                e = self.by_name[('dds', tex[r])]; tpl = dds.Dds(self.split.read(e))
-                put(e, dds.write_like(tpl, atlas) if r == 'abd' else dds.flat_like(tpl, NEUTRAL[r]))
+                e = self.by_name[('dds', tex[r])]; tpl, stub = self.template(tex[r])
+                data = dds.write_like(tpl, atlas) if r == 'abd' else dds.flat_like(tpl, NEUTRAL[r])
+                if len(data) == e.size: put(e, data)
+                else: grown[e.index] = data                                      # a streaming stub (a few hundred bytes) becomes a full texture: it needs new room at the end of the file data
+            if grown: log('textures are streamed for this character: the full textures are written into the .pac instead')
             log('textures: %s replaced by your picture, %s flat, %s neutral' % (tex['abd'], tex['nrm'], tex['prm']))
-        return pacwrite.rebuild(self.pac, {self.split_name: bytes(arch)}), dict(levels=reports, host=self.host)
+        split_bytes = bytes(arch)
+        if grown: split_bytes = innerwrite.append_entries(pacx.Inner(split_bytes, self.split_name), grown)
+        return pacwrite.rebuild(self.pac, {self.split_name: split_bytes}), dict(levels=reports, host=self.host)
