@@ -53,6 +53,7 @@ class Library:
                 for d in json.load(open(self.path)).get('games', []):
                     g = Game(**d)
                     if g.engine == 'unknown' and os.path.isfile(os.path.join(g.root, 'asset_archive', 'toc')): g.engine, g.engine_detail = 'insomniac', 'asset_archive\\toc'      # saved before ModSwap knew this engine
+                    if g.engine == 'unknown' and os.path.isdir(os.path.join(g.root, 'image', 'x64', 'raw', 'character')): g.engine, g.engine_detail = 'hedgehog2', 'image\\x64\\raw\\character\\*.pac'
                     g.supported = g.engine in detect.SUPPORTED          # decided by the engine NOW, not by a flag an older ModSwap saved
                     self.games[d['id']] = g
             except Exception: pass

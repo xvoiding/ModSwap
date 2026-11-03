@@ -13,6 +13,7 @@
   python -m modswap market build FOLDER [--out DIR] [--base-url URL]   turn a folder of models into a hostable catalog.json
   python -m modswap rebuild [--game ID] [--mod ID]   redo your saved mods with the current engine, keeping every setting (installed ones stay installed)
   python -m modswap spiderman suits|slots|install|list|uninstall|restore   Marvel's Spider-Man Remastered (see `spiderman -h`)
+  python -m modswap sonic characters|install|list|uninstall|restore      Sonic Frontiers (see `sonic -h`)
   python -m modswap gui                       open the graphical app in your browser
 
 A *profile* describes one game character: where its mesh and textures live and which engine adapter to use.
@@ -172,6 +173,7 @@ def main(argv=None):
     mk = sp.add_parser('market'); mk.add_argument('action', choices=['list', 'build']); mk.add_argument('folder', nargs='?'); mk.add_argument('--out'); mk.add_argument('--base-url'); mk.set_defaults(f=cmd_market)
     gu = sp.add_parser('gui'); gu.add_argument('--port', type=int, default=8765); gu.add_argument('--no-browser', action='store_true'); gu.set_defaults(f=cmd_gui)
     from .insomniac.cli import add_parser as _sm; _sm(sp)
+    from .hedgehog.cli import add_parser as _hh; _hh(sp)
     a = p.parse_args(argv); a.f(a)
 
 

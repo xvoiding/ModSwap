@@ -95,6 +95,9 @@ def find_art(appid):
 
 
 def _project(g):
+    if g.engine == 'hedgehog2':
+        from .hedgehog.project import SonicProject
+        return SonicProject(g)
     if g.engine == 'insomniac':
         from .insomniac.project import SpiderManProject
         return SpiderManProject(g)
@@ -118,8 +121,8 @@ def api_characters(gid):
 
     def work(log):
         P = _project(g)
-        if g.engine == 'insomniac':
-            log('reading the game files...'); ch = P.describe(log=log); return dict(characters=ch, items=[], total_files=0, unity=True, rigged=len(ch), hidden=0, engine='2.6')
+        if g.engine in ('insomniac', 'hedgehog2'):
+            log('reading the game files...'); ch = P.describe(log=log); return dict(characters=ch, items=[], total_files=0, unity=True, rigged=len(ch), hidden=sum(1 for c in ch if c.get('hidden')), engine='2.6')
         if g.engine == 'unity':
             log('reading the game files...'); ch = P.describe(log=log); return dict(characters=ch, items=[], total_files=0, unity=True, rigged=sum(1 for c in ch if c.get('rigged')), hidden=sum(1 for c in ch if c.get('hidden')), engine='2.6')
         log('reading the game files...'); res = P.scan(log=log)
@@ -240,7 +243,7 @@ def _is_unity(gid):
 
 
 def _is_insomniac(gid):
-    return _game(Library(), gid).engine == 'insomniac'
+    return _game(Library(), gid).engine in ('insomniac', 'hedgehog2')               # (both use the same 'rigged character, rebuilt from a recipe' project shape)
 
 
 SMFIT = {}
@@ -419,7 +422,7 @@ def _unity_apply(g, body, sid, name):
 def api_apply(body):
     lib = Library(); g = _game(lib, body['game']); sid = body['upload']; name = (body.get('name') or 'mod').strip() or 'mod'
     _model_file(sid)
-    if g.engine in ('unity', 'insomniac'): return _unity_apply(g, body, sid, name)
+    if g.engine in ('unity', 'insomniac', 'hedgehog2'): return _unity_apply(g, body, sid, name)
 
     def work(log):
         parts = body.get('parts') or None
@@ -458,7 +461,7 @@ def api_mod_install(body):
     pak = mods.pak_path(body['game'], body['id']); name = body.get('name') or 'mod'
     running.ensure_closed(g)
     meta = next((m for m in mods.list_mods(body['game']) if m['id'] == body['id']), {})
-    if g.engine in ('unity', 'insomniac'):
+    if g.engine in ('unity', 'insomniac', 'hedgehog2'):
         def work(log):
             _replace_same_character(g, P, body['id'], meta.get('character') or '', log)
             return dict(installed=P.install_recipe(pak, name, mod_id=body['id'], log=log))
@@ -499,7 +502,7 @@ def _ext(body):
 def api_ext_list(gid):
     from . import extmods
     g = _game(Library(), gid); r = extmods.list_mods(g); loc = extmods.locate(g)
-    r['can_install'] = bool(g.engine not in ('unreal', 'insomniac') or (g.engine == 'unreal' and loc['paks'])); r['engine'] = g.engine
+    r['can_install'] = bool(g.engine not in ('unreal', 'insomniac', 'hedgehog2') or (g.engine == 'unreal' and loc['paks'])); r['engine'] = g.engine
     return r
 
 

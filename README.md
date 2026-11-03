@@ -301,3 +301,27 @@ python -m modswap spiderman restore                                             
   4 bone bytes, 4 weight bytes. Characters are drawn with extra OUTLINE meshes (toon edge) and a FUR mesh (the body), so a swap has to deal with those too.
 * Not done yet: WRITING a model (the pointer table at the end of the chunk must be regenerated), writing the `.pac` back (LZ4 chunks, header sizes), replacing the DDS textures, the
   installer, and the app screens. Nothing here has been tried in the game.
+
+## 2.16.0 - Sonic Frontiers can be swapped (Sonic first) - NOT yet tried in the game
+```
+python -m modswap sonic characters
+python -m modswap sonic install --character sonic --model my.fbx --textures FOLDER --name Test      (game closed!)
+python -m modswap sonic list
+python -m modswap sonic restore                                                                      (original .pac files back, byte for byte)
+```
+Also in the app: Sonic Frontiers is detected as "Hedgehog Engine 2", its swappable characters are listed, and the viewer, sliders, edit-a-mod, mod list, uninstall and "put the game back to normal" work like for the other games.
+* **How a swap works.** The character's `.pac` is rewritten. The model is filled IN PLACE: the game's own mesh parts are slots with a fixed amount of room, the user's triangles go into them
+  (vertex / index counts are lowered, the bone table is rewritten, data is written big-endian in the slot's own vertex layout), every other part (the toon OUTLINE shells, the fur, the eyes ...)
+  becomes one degenerate triangle, and parts that have to share the plain `cloth` material re-point at its strings (pointers are self-relative and only ever written FORWARD, as in the game's
+  own files). Nothing moves, so the pointer table at the end of the model and the `.pac` layout stay valid. The 3 textures of the cloth material (`_abd` diffuse BC1, `_nrm` normal BC5,
+  `_prm` params BC7) are replaced by DDS files of exactly the same size and format: your picture, a flat normal map, a neutral params map. Then the `.pac` is written again: 64 KB LZ4
+  chunks, the split's size / position patched in the root archive, header sizes (`pacwrite.py`; a `.pac` rewritten without changes reads back identical).
+* **Checked on the real `sonic.pac`:** only the model and the 3 textures differ afterwards; the written model read back with the reader: positions exact, uvs within half-float precision,
+  normals / tangents / binormals orthonormal (tangent = +u, binormal = -v, w bits 3, like the game's own), skin weights sum to 1, dominant bones preserved, triangle order and winding kept;
+  the written diffuse texture sampled at the written uvs gives the right colour on 100% of the vertices; a model too big for a level of detail (the lower levels hold fewer vertices AND
+  triangles) is reduced with a message; installer: backup, replace, uninstall, restore byte for byte; all of it also through the app's server functions on a fake Sonic folder.
+* **Only Sonic for now.** Amy, Knuckles and Tails keep only 170-198 byte stubs of their textures inside their `.pac` (the pixels are streamed from another file); they are listed as
+  "model only" and refused. Sonic's other forms (`soniccyber`, `supersonic` ...) were not looked at.
+* **Not verified:** nothing has been launched in the game. Unknown until then: whether the game accepts a smaller-than-original vertex count in a slot, a rewritten `.pac` (our LZ4 chunks), the
+  degenerate-triangle trick for hidden parts, and how the cloth material (not the fur shader) looks on a whole body. Sonic's outline shell and eyes disappear (the user's model brings its own).
+  Sonic Colors: Ultimate was not looked at.

@@ -49,6 +49,8 @@ class Entry:
     flags: int
     split: int
     source: str              # 'root' or the split's name
+    name: str = ''           # the file's name without extension (filled in by Inner.read_names)
+    index: int = -1          # position in the archive's data entry table
 
     @property
     def is_proxy(self): return bool(self.flags & NOT_HERE)
@@ -65,15 +67,43 @@ class Inner:
         self.entries = []
         for i in range(dents // ENTRY.size):
             uid, size, _, off, _, ext, fl, sp, _ = ENTRY.unpack_from(data, ent0 + ENTRY.size * i)
-            self.entries.append(Entry(self._cstr(ext), uid, size, off, fl, sp, name))
+            self.entries.append(Entry(self._cstr(ext), uid, size, off, fl, sp, name, index=i))
+        self.ent0 = ent0
+        try: self.read_names()
+        except (struct.error, ValueError, IndexError): pass            # names are a convenience: an unreadable tree must not stop the archive from loading
 
     def _cstr(self, p):
         e = self.data.index(b'\0', p); return self.data[p:e].decode('latin1')
+
+    def read_names(self):
+        """file names from the trees section: one tree of extensions, each pointing at a radix tree of file names (a node holds a FRAGMENT of the name; the full name is the
+        fragments from the root down). Sets Entry.name."""
+        d = self.data; NODE = struct.Struct('<QQQiiiHBB')
+        def nodes(tree_at):
+            n, _, nodes_at, _ = struct.unpack_from('<IIQQ', d, tree_at); out = []
+            for i in range(n):
+                name_p, data_p, ch_p, parent, glob, didx, cc, has, _ = NODE.unpack_from(d, nodes_at + 40 * i)
+                out.append((self._cstr(name_p) if name_p else '', data_p, parent, has))
+            return out
+        def full(ns, i):
+            parts = []
+            while i >= 0 and len(parts) < 64: parts.append(ns[i][0]); i = ns[i][2]
+            return ''.join(reversed(parts))
+        by_addr = {self.ent0 + 0x30 * e.index: e for e in self.entries}
+        for ti, (tname, tdata, _, thas) in enumerate(nodes(0x30)):
+            if not thas or not tdata: continue
+            fn = nodes(tdata)
+            for i, (nm, data_p, parent, has) in enumerate(fn):
+                if has and data_p in by_addr: by_addr[data_p].name = full(fn, i)
 
     def read(self, e):
         if e.is_proxy: raise ValueError('this entry is only a pointer; its data is in a split archive')
         if e.offset + e.size > len(self.data): raise ValueError('entry runs past the end of the archive')
         return self.data[e.offset:e.offset + e.size]
+
+    def dep_table_at(self):
+        """position of the first dependency entry (the table starts with u64 count, u64 offset)"""
+        return struct.unpack_from('<Q', self.data, self.dep_pos + 8)[0]
 
     def deps(self):
         """[(name, compressed size, uncompressed size, position in the outer file, [(comp, uncomp) chunks])]"""

@@ -3,7 +3,7 @@ import os, re, glob, mmap, struct
 from dataclasses import dataclass, field
 
 # engines the swap pipeline can write today
-SUPPORTED = {'unreal', 'unity', 'insomniac'}
+SUPPORTED = {'unreal', 'unity', 'insomniac', 'hedgehog2'}
 
 
 @dataclass
@@ -20,7 +20,7 @@ class EngineInfo:
     @property
     def label(self):
         names = {'unreal': 'Unreal Engine', 'unity': 'Unity', 'godot': 'Godot', 'source': 'Source', 'source2': 'Source 2', 'gamemaker': 'GameMaker',
-                 'rpgmaker': 'RPG Maker', 'cryengine': 'CryEngine', 'insomniac': 'Insomniac Engine', 'unknown': 'Unknown engine'}
+                 'rpgmaker': 'RPG Maker', 'cryengine': 'CryEngine', 'insomniac': 'Insomniac Engine', 'hedgehog2': 'Hedgehog Engine 2', 'unknown': 'Unknown engine'}
         return (names.get(self.engine, self.engine) + (' ' + self.version if self.version else '')).strip()
 
 
@@ -123,6 +123,9 @@ def detect_engine(root):
     # ---- Insomniac (Marvel's Spider-Man): everything is read through asset_archive\toc
     if os.path.isfile(os.path.join(root, 'asset_archive', 'toc')) or os.path.isfile(os.path.join(root, 'asset_archive', 'toc.BAK')):
         return EngineInfo('insomniac', '', 'asset_archive\\toc')
+    # ---- Hedgehog Engine 2 (Sonic Frontiers): character .pac files under image\x64\raw\character
+    chd = os.path.join(root, 'image', 'x64', 'raw', 'character')
+    if os.path.isdir(chd) and any(f.lower().endswith('.pac') for f in os.listdir(chd)): return EngineInfo('hedgehog2', '', 'image\\x64\\raw\\character\\*.pac')
     # ---- Unreal
     paks = find_paks(root)
     if paks or any(e.lower().endswith('-shipping.exe') for e in exes) or ('engine' in dirs_seen and 'binaries' in dirs_seen):
