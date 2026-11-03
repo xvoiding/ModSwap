@@ -134,13 +134,14 @@ def swap_character(orig_dir, sk_rel, textures, model, rig, out_dir, atlas_size=2
 
     # ---- mesh buffers
     N, nT = len(pos), len(tris)
-    assert N < 65536, 'mesh has too many vertices for 16-bit indices; decimate first'
+    idx_dt = '<u2' if N < 65536 else '<u4'          # no vertex limit: big meshes get 32-bit indices
+    if idx_dt == '<u4': log('big mesh (%d vertices): using 32-bit indices' % N)
     q = lambda a: np.clip(np.rint(a * 127), -127, 127).astype(np.int8)
     tan = np.zeros((N, 8), np.int8); tan[:, 0:3] = q(T); tan[:, 3] = 127; tan[:, 4:7] = q(nrm); tan[:, 7] = np.where(sgn >= 0, 127, -127)
     sk = _quant_weights(r['skin_i'], r['skin_w'], b2l)
     col = np.tile(_mode_color(o), (N, 1))
     lod = buildsk.build_lod(o, pos.astype('<f4').tobytes(), tan.tobytes(), uv.astype('<f2').tobytes(), sk.tobytes(),
-                            col.tobytes(), tris.astype('<u2').tobytes(), N, nT, adjbytes=None, bonemap=bm, required=required)
+                            col.tobytes(), tris.astype(idx_dt).tobytes(), N, nT, adjbytes=None, bonemap=bm, required=required)
     mn, mx = pos.min(0).astype(float), pos.max(0).astype(float); c, ext = (mn + mx) / 2, (mx - mn) / 2
     ua, ue, mesh_at = buildsk.assemble_auto(o, [lod] * len(o.o['lods']), N)
     bpos = mesh_at + (o.o['skel_start'] - o.mesh_start) + 2                  # the bounds sit 2 bytes (strip flags) after the mesh's start marker

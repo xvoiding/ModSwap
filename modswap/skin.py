@@ -150,6 +150,34 @@ def rigid_islands(order, w, isl, P, Hh, K, frac=0.42):
     return order, w, count
 
 
+def apply_adjust(P, Nn, cx, cy, z0, Hh, adj):
+    """The user's fit sliders, applied to a model already scaled/placed on the character. (cx, cy) = pelvis, z0 = the character's feet, Hh = its height.
+    The ORDER is what keeps the sliders from fighting each other (each one only does its own job):
+      1. size   - width / depth / height stretch along the MODEL's own axes (nothing has been rotated yet, so no shearing)
+      2. tilt   - pitch / roll lean the model about the pelvis, in the model's own frame
+      3. turn   - yaw spins the whole (tilted) model about the vertical axis, LAST, so turning never changes how it leans
+      4. nudge  - dx / dy / dz move it"""
+    P = P.copy(); Nn = Nn.copy()
+    mult = np.array([float(adj.get('width', 1) or 1), float(adj.get('depth', 1) or 1), float(adj.get('height', 1) or 1)])
+    P = (P - [cx, cy, z0]) * mult + [cx, cy, z0]
+    Nn = Nn / mult; Nn /= np.linalg.norm(Nn, axis=1, keepdims=True) + 1e-12
+    # tilt: pitch = lean forward(+)/back(-), roll = lean to the character's left(+)/right(-), both about the pelvis (at the SAME spot on
+    # the model however tall it is, so the Height slider doesn't change the tilt either)
+    pz = z0 + 0.5 * Hh * mult[2]
+    for ang, ax in ((float(adj.get('pitch', 0) or 0), 0), (float(adj.get('roll', 0) or 0), 1)):
+        if not ang: continue
+        a_ = np.radians(-ang if ax == 0 else ang); c_, s_ = np.cos(a_), np.sin(a_)
+        if ax == 0: R3 = np.array([[1, 0, 0], [0, c_, -s_], [0, s_, c_]])
+        else: R3 = np.array([[c_, 0, s_], [0, 1, 0], [-s_, 0, c_]])
+        ctr = np.array([cx, cy, pz]); P = (P - ctr) @ R3.T + ctr; Nn = Nn @ R3.T
+    yaw = np.radians(float(adj.get('yaw', 0) or 0))
+    if yaw:
+        c_, s_ = np.cos(yaw), np.sin(yaw); Rz = np.array([[c_, -s_], [s_, c_]])
+        P[:, :2] = (P[:, :2] - [cx, cy]) @ Rz.T + [cx, cy]; Nn[:, :2] = Nn[:, :2] @ Rz.T
+    P = P + [float(adj.get('dx', 0) or 0), float(adj.get('dy', 0) or 0), float(adj.get('dz', 0) or 0)]
+    return P, Nn
+
+
 def autorig(pos, nrm, rig, up='+Y', forward=None, scale_mult=1.0, max_inf=4, power=3.0, adjust=None, edits=None, tris=None):
     """pos/nrm in source space. Returns dict(pos, nrm, skin_i (N,4), skin_w (N,4), flipped(bool), info)."""
     names = rig['names']; par = rig['parent']; head = np.array(rig['head'], float)
@@ -177,24 +205,8 @@ def autorig(pos, nrm, rig, up='+Y', forward=None, scale_mult=1.0, max_inf=4, pow
     P[:, 1] -= np.median(P[mid, 1]) - pel_h[1]
     Hh = rig['ref_height']
     adj = adjust or {}
-    if adj:      # user fit: rotate about the vertical axis through the pelvis, stretch width/depth/height, nudge. Done BEFORE weighting so the skinning follows
-        cx, cy, z0 = pel_h[0], pel_h[1], rig['ref_min_z']
-        yaw = np.radians(float(adj.get('yaw', 0) or 0))
-        if yaw:
-            c_, s_ = np.cos(yaw), np.sin(yaw); Rz = np.array([[c_, -s_], [s_, c_]])
-            P[:, :2] = (P[:, :2] - [cx, cy]) @ Rz.T + [cx, cy]; Nn[:, :2] = Nn[:, :2] @ Rz.T
-        # tilt: pitch = lean forward(+)/back(-), roll = lean to the character's left(+)/right(-), both about the pelvis height
-        pz = z0 + 0.5 * Hh
-        for ang, ax in ((float(adj.get('pitch', 0) or 0), 0), (float(adj.get('roll', 0) or 0), 1)):
-            if not ang: continue
-            a_ = np.radians(-ang if ax == 0 else ang); c_, s_ = np.cos(a_), np.sin(a_)
-            if ax == 0: R3 = np.array([[1, 0, 0], [0, c_, -s_], [0, s_, c_]])
-            else: R3 = np.array([[c_, 0, s_], [0, 1, 0], [-s_, 0, c_]])
-            ctr = np.array([cx, cy, pz]); P = (P - ctr) @ R3.T + ctr; Nn = Nn @ R3.T
-        mult = np.array([float(adj.get('width', 1) or 1), float(adj.get('depth', 1) or 1), float(adj.get('height', 1) or 1)])
-        P = (P - [cx, cy, z0]) * mult + [cx, cy, z0]
-        Nn = Nn / mult; Nn /= np.linalg.norm(Nn, axis=1, keepdims=True) + 1e-12
-        P = P + [float(adj.get('dx', 0) or 0), float(adj.get('dy', 0) or 0), float(adj.get('dz', 0) or 0)]
+    if adj:      # user fit (size, tilt, turn, nudge). Done BEFORE weighting so the skinning follows
+        P, Nn = apply_adjust(P, Nn, pel_h[0], pel_h[1], rig['ref_min_z'], Hh, adj)
     # --- source skeleton (match arm pose)
     src = head.copy(); R = [np.eye(3)] * K; kscale = [1.0] * K
     R = list(R)

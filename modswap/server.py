@@ -292,6 +292,19 @@ def _unity_fit_rigged(P, m, mkey, mdl, body, adj):
                 targets=[m['label']], target=0, height=float(ch['hi'][2] - ch['lo'][2]))
 
 
+def _edit_record(body):
+    """what the fit screen needs to open a finished mod again"""
+    return {k: body.get(k) for k in ('family', 'target', 'up', 'forward', 'scale', 'width', 'height', 'depth', 'yaw', 'pitch', 'roll', 'dx', 'dy', 'dz', 'match_pose', 'parts', 'edits') if body.get(k) is not None}
+
+
+def api_mod_edit(body):
+    """reopen a saved mod: its model + textures go into a fresh upload, and its fit settings come back so the fit screen can restore every slider"""
+    from . import mods
+    sid = uuid.uuid4().hex[:12]; d = os.path.join(UPLOADS, sid)
+    info = mods.open_for_edit(body['game'], body['id'], d)
+    return dict(upload=sid, settings=info, file=os.path.basename(_model_file(sid)[1]))
+
+
 def _active_ids(P):
     ids = []
     for v in P.installed().values():
@@ -327,7 +340,7 @@ def _unity_apply(g, body, sid, name):
                 running.ensure_closed(g); _replace_same_character(g, P, '', chlabel, log)
             files = P.build(m, mdl, params, tmp, log=log)           # built on top of the mods already installed; a broken model never touches the game
             zpath = os.path.join(tmp, 'recipe.zip'); P.make_recipe(m, os.path.dirname(key[0]), params, name, zpath)
-            mid = mods.add(g.id, name, zpath, character=chlabel)
+            mid = mods.add(g.id, name, zpath, character=chlabel, source_dir=os.path.dirname(key[0]), edit=_edit_record(body))
             if body.get('install', True):
                 log('installing the mod into the game (original is backed up)...')
                 dest = P.install_files(files, name, mod_id=mid); log('done -> ' + dest); return dict(installed=dest, mod=mid)
@@ -351,7 +364,7 @@ def api_apply(body):
         pak = P.build(prof, m, name, forward=body.get('forward') or None, up=body.get('up') or None, scale=float(body.get('scale') or 1.0), adjust=adj, edits=body.get('edits') or None, log=log)
         from . import mods
         install = body.get('install', True)
-        mid = mods.add(body['game'], name, pak, character=re.sub(r'\s{2}\(.*\)$', '', ctx['family'].label))
+        mid = mods.add(body['game'], name, pak, character=re.sub(r'\s{2}\(.*\)$', '', ctx['family'].label), source_dir=os.path.dirname(key[0]), edit=_edit_record(body))
         if install:
             log('installing the mod into the game...')
             running.ensure_closed(g)
@@ -625,6 +638,7 @@ class H(BaseHTTPRequestHandler):
         if r == '/api/restore': return self._guard(lambda: api_restore(body['game']))
         if r == '/api/mod_install': return self._guard(lambda: api_mod_install(body))
         if r == '/api/mod_uninstall': return self._guard(lambda: api_mod_uninstall(body))
+        if r == '/api/mod_edit': return self._guard(lambda: api_mod_edit(body))
         if r == '/api/mod_delete': return self._guard(lambda: api_mod_delete(body))
         if r == '/api/ext_install': return self._guard(lambda: api_ext_install(body))
         if r == '/api/ext_toggle': return self._guard(lambda: _ext(body).toggle(_closed(body['game']), body['id']))

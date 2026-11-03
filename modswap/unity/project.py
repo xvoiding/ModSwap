@@ -144,7 +144,7 @@ class UnityProject:
         log('replacing the model (%d vertices)...' % len(P))
         for p in m['parts']:
             ns = max(1, len(p['mats']))
-            if p['mesh'] == m['main']: patch.set_mesh(O[p['mesh']], P, Nn, uv, tris, n_sub=ns)
+            if p['mesh'] == m['main']: patch.set_mesh(O[p['mesh']], P, Nn, uv, tris, n_sub=ns, log=log)
             else: patch.tiny_mesh(O[p['mesh']], n_sub=ns)
         tex = self._main_texture(O, m['main_mat'])
         if tex is not None:

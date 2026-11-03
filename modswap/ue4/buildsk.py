@@ -9,6 +9,13 @@ def bulk(isz,data,cnt=None):
     assert len(data)==isz*cnt
     return i32(isz)+i32(cnt)+bytes(data)
 
+def idx_block(idxbytes, T):
+    """the LOD's index buffer: [DataTypeSize][element size][count][indices]. 16-bit indices when every vertex number fits (the usual case),
+    32-bit when the mesh has 65,536+ vertices - Unreal supports both, the caller just hands in '<u2' or '<u4' bytes."""
+    isz=len(idxbytes)//(3*T)
+    assert isz in (2,4) and len(idxbytes)==isz*3*T, 'index buffer must be 16-bit or 32-bit'
+    return bytes([isz])+bulk(isz,idxbytes,cnt=3*T)
+
 class Orig:
     """parsed original SK_Wally"""
     def __init__(s, base, exp_idx=1, rtmask=False, adj=None, trail=None, v423=False, ue5=False):
@@ -65,7 +72,7 @@ def build_lod423(orig, pos, tanbytes, uvbytes, skinbytes, colbytes, idxbytes, N,
         sec+=i32(N)+b'\x00'*(8*N)
     sec+=u[S0['end']-4:S0['end']]                           # bDisabled
     out+=sec
-    out+=bytes([2])+bulk(2,idxbytes,cnt=3*T)
+    out+=idx_block(idxbytes,T)
     ab=sorted(bm) if bonemap is not None else list(L['active_bones'])
     out+=i32(len(ab))+struct.pack('<%dh'%len(ab),*ab)
     rq=sorted(required) if required is not None else list(L['required_bones'])
@@ -106,7 +113,7 @@ def build_lod51(orig, pos, tanbytes, uvbytes, skinbytes, idxbytes, N, T, bonemap
         ab_start=L['sections'][-1]['end']; nab=struct.unpack_from('<i',u,ab_start)[0]; out+=u[ab_start:ab_start+4+2*nab]   # active bones follow the last section
     st=bytearray()
     st+=bytes([L['stream_strip'][0],L['stream_strip'][1]])
-    st+=bytes([2])+bulk(2,idxbytes,cnt=3*T)
+    st+=idx_block(idxbytes,T)
     st+=i32(12)+i32(N)+bulk(12,pos,cnt=N)
     st+=bytes([L['smvb_strip'][0],L['smvb_strip'][1]])+i32(nt)+i32(N)+i32(0)+i32(0)
     st+=bulk(8,tanbytes,cnt=N)+bulk(4,bytes(uvbytes)*nt,cnt=N*nt)
@@ -166,7 +173,7 @@ def build_lod(orig, pos, tanbytes, uvbytes, skinbytes, colbytes, idxbytes, N, T,
     st=bytearray()
     strip_class=(L['stream_strip'][1] if orig.adj_on is False else (0 if adjbytes is not None else 1))     # cooks without an adjacency buffer keep their own flag
     st+=bytes([L['stream_strip'][0],strip_class])
-    st+=bytes([2])+bulk(2,idxbytes,cnt=3*T)
+    st+=idx_block(idxbytes,T)
     st+=i32(12)+i32(N)+bulk(12,pos,cnt=N)
     st+=bytes(u[L['stream_start']+2+1+8+len(orig.idx)+8+ (0):0]) if False else b''
     st+=bytes([L['smvb_strip'][0],L['smvb_strip'][1]])+i32(1)+i32(N)+i32(0)+i32(0)

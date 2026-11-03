@@ -56,8 +56,12 @@ class Project:
             raise RuntimeError('this game keeps its characters in IoStore containers (.utoc/.ucas); its .pak files only hold audio, video and configs. ModSwap can not read IoStore yet')
         sk_c, sm_c = uescan.candidates(files)
         log('%d character candidates, %d item candidates' % (len(sk_c), len(sm_c)))
-        sk = uescan.verify_skeletal(sk_c, self.backend, self.dir, log)
-        res = dict(characters=uescan.families(sk), items=sm_c, total_files=len(files))
+        rejected = []
+        sk = uescan.verify_skeletal(sk_c, self.backend, self.dir, log, rejected=rejected)
+        fams = uescan.families(sk)
+        rp = uescan.write_scan_report(os.path.join(self.dir, 'scan_report.txt'), files, sk_c, sk, rejected, fams)      # what was found / dropped and why
+        if rp: log('scan report saved: %s' % rp)
+        res = dict(characters=fams, items=sm_c, total_files=len(files))
         uescan.save_scan(res, cache)
         self.files = {k: v[0] for k, v in files.items()}; json.dump(self.files, open(fm, 'w'))
         return res

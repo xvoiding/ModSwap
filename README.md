@@ -175,3 +175,31 @@ error messages; a "Reset everything" button that puts the game back like it was.
 - Unity: a new mod is added on top of the game files as they are right now; uninstalling one puts the originals back and re-applies the others from their saved recipes (takes a few seconds per remaining mod). The panic button / "Put the game back to normal" still removes everything.
 - Unreal / IoStore: each mod is its own patch pak, nothing already installed is touched.
 - Tests: three skinned mods installed on different characters at once (both characters carry their model at the same time), remove one, replace one, reinstall from the library, delete one, restore everything (tests/test_unity_stack.py), plus Unreal pak/IoStore stacking (tests/test_unreal_stack.py).
+
+## 2.14.0 - sliders, no vertex limit, reopen a mod
+**Sliders no longer fight each other.** Turning the model changed which way "lean" leaned, and Width/Depth skewed the model once it was turned. Cause: the fit
+turned the model first, then tilted it around the fixed world axes, then stretched it along the world axes. The order is now size (along the model's own
+axes) -> lean/tilt about the pelvis -> turn about the vertical axis LAST -> move. Turn only spins the result, Width/Depth/Height only stretch it, and Height
+no longer changes the tilt. (`tests/test_fit_sliders.py` runs the old order and the new one through the same checks: the old one fails them, the new one passes.)
+Applies to Unreal and rigged Unity characters. Static Unity models and the body-part editor already worked in this order.
+
+**No vertex limit.**
+- Unreal: meshes with 65,536+ vertices are written with 32-bit indices instead of stopping with "mesh has too many vertices... decimate first".
+- Unity 2017.3 and newer: same (32-bit index format).
+- Older Unity (5.x, e.g. ClusterTruck): 65,535 vertices per mesh is a hard limit of the engine itself, so a bigger model is merged down to fit and the log says
+  "reduced from N to M vertices" instead of failing. Nothing can draw more than that in those games.
+- NOT verified in a running game: there are no Unreal game files here, only synthetic meshes checked with ModSwap's own reader. If a game rejects a big mesh, send the log.
+
+**Reopen a mod you made (engine side).** Every mod now keeps a copy of the model, its textures and all fit settings (character, Forward/Up, size, sliders,
+body-part edits, chosen parts). `POST /api/mod_edit {game, id}` copies them into a fresh upload and returns the settings so the fit screen can restore
+everything. Mods made before this version don't have the copy: it says so and you make them again once. The "Edit" button itself has to be added to the
+Windows app.
+
+**Missing characters (SpongeBob / Patrick / Sandy).** Two changes, neither confirmed against that game's files:
+- The scanner now also looks at meshes named `<Name>_mesh` / `<Name>_body` / `_skm` / `_model` that sit next to `<Name>_Skeleton` / `<Name>_PhysicsAsset`
+  (before, the names had to match exactly, so `Patrick_mesh` was never even checked). Every candidate is still header-verified, so this can't add non-meshes.
+  The first scan after updating is redone.
+- Every scan now writes `scan_report.txt` next to the game's cache (`%APPDATA%\ModSwap\cache\<game>\`): which meshes were found, which were dropped and why, how
+  they were grouped into characters, and which mesh-looking files were never looked at. If a character is still missing, that file shows why.
+
+Not in this version: Spider-Man (Insomniac engine), Sonic Frontiers / Sonic Colors (Hedgehog Engine). These engines have no support in ModSwap.

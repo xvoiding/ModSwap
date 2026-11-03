@@ -112,7 +112,7 @@ def build(P, m, model, params, out_dir, log=print):
             if fn not in held: held[fn] = P._both(fn, current=True)      # patch the game's current files so mods stack
             return held[fn]
         s = m['smrs'][m['main_smr']]; main = tuple(s['mesh'])
-        fn, pid = s['mesh']; patch.set_mesh(get(fn)[1][pid], Pu, Nu, uv, tr, n_sub=max(1, s['n_mats']), skin=(si, sw)); touched.add(fn)
+        fn, pid = s['mesh']; patch.set_mesh(get(fn)[1][pid], Pu, Nu, uv, tr, n_sub=max(1, s['n_mats']), skin=(si, sw), log=log); touched.add(fn)
         done = {main}
         for it in m['smrs']:
             k = tuple(it['mesh'])

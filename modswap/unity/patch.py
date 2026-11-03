@@ -1,6 +1,8 @@
 """Replace Unity Mesh and Texture2D objects in a serialized file (sharedassetsN.assets, levelN, resources.assets ...).
 
-Mesh layout written: one interleaved vertex stream, float32:  position(3) normal(3) uv0(2) tangent(4), uint16 indices, single submesh.
+Mesh layout written: one interleaved vertex stream, float32:  position(3) normal(3) uv0(2) tangent(4), single submesh. Indices are uint16, or
+uint32 for big meshes when the game's Unity (2017.3+) has the m_IndexFormat field. Older Unity can only draw 65,535 vertices per mesh: bigger
+models are reduced to fit (and the log says so).
 Works for meshes that are stored uncompressed (m_MeshCompression == 0), which is the Unity 5.x default for imported models.
 """
 import numpy as np
@@ -25,14 +27,49 @@ def _tangents(pos, nrm, uv, tris):
     return T / np.linalg.norm(T, axis=1, keepdims=True)
 
 
-def set_mesh(obj, pos, nrm, uv, tris, n_sub=1, skin=None):
+LIMIT16 = 65000
+
+
+def reduce_vertices(pos, nrm, uv, tris, skin=None, limit=LIMIT16):
+    """Merge nearby vertices (grid clustering) until at most `limit` are left. Only used when the game's Unity cannot draw more than 65,535
+    vertices per mesh. -> (pos, nrm, uv, tris, skin).  Each merged vertex takes the average position/normal and the uv + skin weights of the
+    original vertex closest to it; triangles that collapse are dropped."""
+    n = len(pos)
+    if n <= limit: return pos, nrm, uv, tris, skin
+    lo = pos.min(0); ext = float(max((pos.max(0) - lo).max(), 1e-9))
+    def cluster(res):
+        q = np.minimum(np.floor((pos - lo) / ext * res), res - 1).astype(np.int64)
+        return np.unique((q[:, 0] * res + q[:, 1]) * res + q[:, 2], return_inverse=True)[1].ravel()
+    a, b, best = 8, 4096, None
+    while a <= b:
+        mid = (a + b) // 2; inv = cluster(mid)
+        if inv.max() + 1 <= limit: best = inv; a = mid + 1
+        else: b = mid - 1
+    inv = best if best is not None else cluster(8); m = int(inv.max()) + 1
+    cnt = np.bincount(inv, minlength=m).astype(np.float64)[:, None]
+    P = np.stack([np.bincount(inv, pos[:, k], m) for k in range(3)], 1) / cnt
+    Nn = np.stack([np.bincount(inv, nrm[:, k], m) for k in range(3)], 1); Nn /= np.linalg.norm(Nn, axis=1, keepdims=True) + 1e-12
+    d = np.linalg.norm(pos - P[inv], axis=1); order = np.lexsort((d, inv))                # per cluster: the member closest to the new vertex first
+    first = order[np.r_[0, np.flatnonzero(np.diff(inv[order])) + 1]]
+    T = inv[tris]; T = T[(T[:, 0] != T[:, 1]) & (T[:, 1] != T[:, 2]) & (T[:, 0] != T[:, 2])]
+    sk = None if skin is None else (np.asarray(skin[0])[first], np.asarray(skin[1])[first])
+    return P.astype(np.float32), Nn.astype(np.float32), np.asarray(uv)[first], T, sk
+
+
+def set_mesh(obj, pos, nrm, uv, tris, n_sub=1, skin=None, log=None):
     """obj: UnityPy ObjectReader of a Mesh. pos/nrm (N,3), uv (N,2) with v UP (Unity), tris (M,3) clockwise-from-outside (Unity).
     skin=(bone_index (N,4), weight (N,4)) makes it a skinned mesh: the mesh keeps its bind poses and gets these weights."""
     t = obj.read_typetree()
     if t.get('m_MeshCompression', 0) != 0: raise ValueError('mesh is compressed')
     pos = np.asarray(pos, np.float32); nrm = np.asarray(nrm, np.float32); uv = np.asarray(uv, np.float32); tris = np.asarray(tris, np.int64)
     n = len(pos)
-    if n > 65000: raise ValueError('too many vertices for a 16-bit mesh (%d)' % n)
+    wide = False
+    if n > LIMIT16:
+        if 'm_IndexFormat' in t: wide = True                                  # Unity 2017.3+: 32-bit indices, no vertex limit
+        else:                                                                 # older Unity: 65,535 is a hard limit of the engine itself
+            pos, nrm, uv, tris, skin = reduce_vertices(pos, nrm, uv, np.asarray(tris, np.int64), skin)
+            if log: log('this game\'s Unity version can only draw 65,535 vertices per mesh: your model was reduced from %d to %d vertices' % (n, len(pos)))
+            n = len(pos)
     tan = _tangents(pos.astype(np.float64), nrm.astype(np.float64), uv.astype(np.float64), tris).astype(np.float32)
     data = np.concatenate([pos, nrm, uv, tan, np.ones((n, 1), np.float32)], axis=1).astype('<f4')      # 3+3+2+3+1 = 12 floats = 48 bytes
     vd = t['m_VertexData']
@@ -44,7 +81,7 @@ def set_mesh(obj, pos, nrm, uv, tris, n_sub=1, skin=None):
     if len(ch) > 7: ch[7].update(offset=32, dimension=4)
     key = 'm_DataSize' if 'm_DataSize' in vd else '_typelessdata'
     vd[key] = data.tobytes()
-    idx = tris.astype('<u2').ravel()
+    idx = tris.astype('<u4' if wide else '<u2').ravel()
     t['m_IndexBuffer'] = list(idx.tobytes()) if isinstance(t['m_IndexBuffer'], list) else idx.tobytes()
     box = _aabb(pos)
     old = t['m_SubMeshes'][0] if t.get('m_SubMeshes') else {}
@@ -53,7 +90,7 @@ def set_mesh(obj, pos, nrm, uv, tris, n_sub=1, skin=None):
     if 'baseVertex' in sub: sub['baseVertex'] = 0
     empty = dict(sub); empty.update(indexCount=0, vertexCount=0)
     t['m_SubMeshes'] = [sub] + [dict(empty) for _ in range(max(0, n_sub - 1))]
-    if 'm_IndexFormat' in t: t['m_IndexFormat'] = 0
+    if 'm_IndexFormat' in t: t['m_IndexFormat'] = 1 if wide else 0
     if isinstance(t.get('m_StreamData'), dict): t['m_StreamData'].update(offset=0, size=0, path='')
     t['m_LocalAABB'] = box
     t['m_BakedConvexCollisionMesh'] = []; t['m_BakedTriangleCollisionMesh'] = []

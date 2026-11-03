@@ -1,0 +1,13 @@
+# What the engine needs (these are the packages bundled in runtime/). Python 3.12.
+numpy>=2.5
+Pillow>=13.0
+trimesh>=5.2
+pycollada>=0.9.3
+UnityPy>=1.25
+etcpak>=0.9.15
+texture2ddecoder>=1.0.6
+astc-encoder-py>=0.1.12
+lz4>=4.4
+brotli>=1.2
+lxml>=6.1
+networkx>=3.7
