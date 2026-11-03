@@ -41,8 +41,9 @@ def uv_extents(uv, mat, n_mats, pad_frac=0.004, wraps=None):
                 v = np.sort(u[:, ax]); cut = max(2, int(0.002 * len(v))); cut = min(cut, (len(v) - 1) // 2); lo[ax] = v[cut] - pad_frac; hi[ax] = v[-1 - cut] + pad_frac
             if wraps is not None and wraps[m][ax] == 'clamp': lo[ax], hi[ax] = 0.0, 1.0
             if hi[ax] - lo[ax] > 16: c = 0.5 * (lo[ax] + hi[ax]); lo[ax], hi[ax] = c - 8, c + 8
-        u0 = min(0.0, np.floor(lo[0] * 4) / 4); v0 = min(0.0, np.floor(lo[1] * 4) / 4)
-        u1 = max(1.0, np.ceil(hi[0] * 4) / 4);  v1 = max(1.0, np.ceil(hi[1] * 4) / 4)
+        lo_r, hi_r = lo + pad_frac, hi - pad_frac                               # (round the REAL bounds: the little padding above must not push a plain 0..1 texture out to -0.25..1.25, that wasted a fifth of the resolution)
+        u0 = min(0.0, np.floor(lo_r[0] * 4) / 4); v0 = min(0.0, np.floor(lo_r[1] * 4) / 4)
+        u1 = max(1.0, np.ceil(hi_r[0] * 4) / 4);  v1 = max(1.0, np.ceil(hi_r[1] * 4) / 4)
         if wraps is not None:
             if wraps[m][0] == 'clamp': u0, u1 = 0.0, 1.0
             if wraps[m][1] == 'clamp': v0, v1 = 0.0, 1.0

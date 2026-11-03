@@ -2,7 +2,7 @@
 
 Runs on your machine only (127.0.0.1). Long work (scanning a game, building a mod) runs as background jobs with a live log.
 """
-import re, os, sys, io, json, base64, threading, traceback, uuid, tempfile, webbrowser, shutil, zipfile, mimetypes, subprocess
+import re, os, sys, io, json, base64, zlib, threading, traceback, uuid, tempfile, webbrowser, shutil, zipfile, mimetypes, subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
 
@@ -221,6 +221,26 @@ def api_inspect(sid):
 def _b64(a, dt): return base64.b64encode(np.ascontiguousarray(a, dt).tobytes()).decode()
 
 
+VTEX = {}
+
+
+def _viewer_tex(atl, uv):
+    """-> (uv', png as base64) for the 3D viewer. The viewer maps its picture over the whole 0..1 range of the texture coordinates it is given (it stretches the picture to fit them), so the picture
+    has to FILL that range: the part of the packed atlas the model actually uses is cut out and stretched to the full square, and the uvs are rescaled to match. (A model whose texture only covered part
+    of the atlas used to be drawn with its texture scrambled in the viewer, while the game build - which uses the atlas as packed - was right.) Correct whichever way the viewer maps it."""
+    from PIL import Image
+    uv = np.asarray(uv, np.float64); S = atl.shape[0]
+    lo, hi = (uv.min(0), uv.max(0)) if len(uv) else (np.zeros(2), np.ones(2))
+    if (hi - lo).min() < 1e-4: lo, hi = np.zeros(2), np.ones(2)
+    key = (atl.shape, zlib.crc32(np.ascontiguousarray(atl[::8, ::8]).tobytes()), tuple(np.round(lo * S, 3)), tuple(np.round(hi * S, 3)))
+    if key not in VTEX:
+        if len(VTEX) > 6: VTEX.pop(next(iter(VTEX)))
+        full = bool(lo.max() < 1e-4 and hi.min() > 1 - 1e-4)
+        im = Image.fromarray(atl) if full else Image.fromarray(atl).resize((S, S), Image.LANCZOS, box=(lo[0] * S, lo[1] * S, hi[0] * S, hi[1] * S))
+        b = io.BytesIO(); im.save(b, 'PNG', compress_level=1); VTEX[key] = base64.b64encode(b.getvalue()).decode()     # PNG: no JPEG smearing of the preview texture
+    return np.clip((uv - lo) / (hi - lo), 0.0, 1.0), VTEX[key]
+
+
 def api_fit(body):
     """auto-rig your model onto the selected character and return both meshes for the 3D viewport"""
     from . import atlas, preview, edit
@@ -243,14 +263,14 @@ def api_fit(body):
             imgs = [im if im is not None else Image.new('RGB', (64, 64), (160, 160, 160)) for im in m.images]
             atl, cells = atlas.pack(imgs, m.uv, m.vert_mat, size=1024); ATLAS[akey] = (atl, atlas.remap_uv(m.uv, m.vert_mat, cells, 1024))
         atl, uv = ATLAS[akey]
-        b = io.BytesIO(); Image.fromarray(atl).save(b, 'PNG', compress_level=1)     # PNG: no JPEG smearing of the preview texture
         if 'origb64' not in ctx: ctx['origb64'] = {}
         if ti not in ctx['origb64']:
             vo, vt = viewerlod.outline((gid, fam, ti), opos, otris); ctx['origb64'][ti] = dict(pos=_b64(vo, '<f4'), idx=_b64(vt, '<u4'), n=len(vo), t=len(vt))
         vtris, vpos, vuv, vgrp = viewerlod.apply(viewerlod.cached_plan((mkey, tuple(parts or ()), 'ue'), pos, tris, viewerlod.MODEL_TRIS, viewerlod.labels_from_uv(uv)), tris, pos, uv, info['vgroup'])
+        vuv, png = _viewer_tex(atl, vuv)
         return dict(orig=ctx['origb64'][ti],
                     new=dict(pos=_b64(vpos, '<f4'), idx=_b64(vtris, '<u4'), uv=_b64(vuv, '<f4'), n=len(vpos), t=len(vtris)),
-                    atlas=base64.b64encode(b.getvalue()).decode(),
+                    atlas=png,
                     info=dict(forward=info['forward'], scale=float(info['scale']), pivot=info['pivot'], up=info['up']),
                     groups=dict(names=edit.AUTO_NAMES, ids=_b64(vgrp, 'u1'), pivots=[[float(x) for x in p] for p in info['piv']]),
                     targets=[x['name'] if 'name' in x else os.path.basename(x['mesh']) for x in ctx['prof']['targets']], target=ti,
@@ -289,12 +309,12 @@ def _insomniac_fit(body):
             imgs = [im if im is not None else Image.new('RGB', (64, 64), (160, 160, 160)) for im in mdl.images]
             atl, cells = atlas.pack(imgs, mdl.uv, mdl.vert_mat, size=1024); ATLAS[akey] = (atl, atlas.remap_uv(mdl.uv, mdl.vert_mat, cells, 1024))
         atl, uv = ATLAS[akey]
-        b = io.BytesIO(); Image.fromarray(atl).save(b, 'PNG', compress_level=1)
         info = f['info']
         vo, vt = viewerlod.outline(('i', gid, body['family']), opos, otris); vtris, vpos, vuv, vgrp = viewerlod.apply(viewerlod.cached_plan((mkey, tuple(parts or ()), 'in'), pos, tris, viewerlod.MODEL_TRIS, viewerlod.labels_from_uv(uv)), tris, pos, uv, f['vgroup'])
+        vuv, png = _viewer_tex(atl, vuv)
         return dict(orig=dict(pos=_b64(vo, '<f4'), idx=_b64(vt, '<u4'), n=len(vo), t=len(vt)),
                     new=dict(pos=_b64(vpos, '<f4'), idx=_b64(vtris, '<u4'), uv=_b64(vuv, '<f4'), n=len(vpos), t=len(vtris)),
-                    atlas=base64.b64encode(b.getvalue()).decode(),
+                    atlas=png,
                     info=dict(forward=info['forward'], scale=float(info['scale']) * 100.0, pivot=[float(x) * 100.0 for x in info['pivot']], up=info['up']),
                     groups=dict(names=edit.AUTO_NAMES, ids=_b64(vgrp, 'u1'), pivots=[[float(x) * 100.0 for x in p] for p in f['piv']]),
                     targets=[m['label']], target=0, height=float(hi[2] - lo[2]))
@@ -325,11 +345,11 @@ def _unity_fit(body):
             imgs = [im if im is not None else Image.new('RGB', (64, 64), (160, 160, 160)) for im in mdl.images]
             atl, cells = atlas.pack(imgs, mdl.uv, mdl.vert_mat, size=1024); ATLAS[akey] = (atl, atlas.remap_uv(mdl.uv, mdl.vert_mat, cells, 1024))
         atl, uv = ATLAS[akey]
-        b = io.BytesIO(); Image.fromarray(atl).save(b, 'PNG', compress_level=1)     # PNG: no JPEG smearing of the preview texture
         vo, vt = viewerlod.outline(('u', gid, body['family']), opos, otris); vtris, vpos, vuv = viewerlod.apply(viewerlod.cached_plan((mkey, tuple(parts or ()), 'us'), pos, mdl.tris, viewerlod.MODEL_TRIS, viewerlod.labels_from_uv(uv)), mdl.tris, pos, uv)
+        vuv, png = _viewer_tex(atl, vuv)
         return dict(orig=dict(pos=_b64(vo, '<f4'), idx=_b64(vt, '<u4'), n=len(vo), t=len(vt)),
                     new=dict(pos=_b64(vpos, '<f4'), idx=_b64(vtris, '<u4'), uv=_b64(vuv, '<f4'), n=len(vpos), t=len(vtris)),
-                    atlas=base64.b64encode(b.getvalue()).decode(),
+                    atlas=png,
                     info=dict(forward=info['forward'], scale=float(info['scale']), pivot=info['pivot'], up=info['up']), static=True,
                     groups=dict(names=edit.AUTO_NAMES, ids=_b64(np.zeros(len(vpos)), 'u1'), pivots=[[0.0, 0.0, 0.0]] * 6),
                     targets=[m['label']], target=0, height=float(hi[2] - lo[2]))
@@ -349,13 +369,13 @@ def _unity_fit_rigged(P, m, mkey, mdl, body, adj):
         imgs = [im if im is not None else Image.new('RGB', (64, 64), (160, 160, 160)) for im in mdl.images]
         atl, cells = atlas.pack(imgs, mdl.uv, mdl.vert_mat, size=1024); ATLAS[akey] = (atl, atlas.remap_uv(mdl.uv, mdl.vert_mat, cells, 1024))
     atl, uv = ATLAS[akey]
-    b = io.BytesIO(); Image.fromarray(atl).save(b, 'PNG', compress_level=1)     # PNG: no JPEG smearing of the preview texture
     info = f['info']; tris = f['tris']
     if not np.isfinite(pos).all(): raise RuntimeError("ModSwap couldn't fit your model onto this character (the numbers came out invalid). Try another model orientation in the Up/Forward options, or pick a different character.")
     vo, vt = viewerlod.outline(('r', body['game'], m['label']), opos, ch['otris']); vtris, vpos, vuv, vgrp = viewerlod.apply(viewerlod.cached_plan((mkey, tuple(parts or ()), 'ur'), pos, tris, viewerlod.MODEL_TRIS, viewerlod.labels_from_uv(uv)), tris, pos, uv, f['vgroup'])
+    vuv, png = _viewer_tex(atl, vuv)
     return dict(orig=dict(pos=_b64(vo, '<f4'), idx=_b64(vt, '<u4'), n=len(vo), t=len(vt)),
                 new=dict(pos=_b64(vpos, '<f4'), idx=_b64(vtris, '<u4'), uv=_b64(vuv, '<f4'), n=len(vpos), t=len(vtris)),
-                atlas=base64.b64encode(b.getvalue()).decode(),
+                atlas=png,
                 info=dict(forward=info['forward'], scale=float(info['scale']), pivot=[float(x) for x in info['pivot']], up=info['up']), static=bool(f['static']),
                 groups=dict(names=edit.AUTO_NAMES, ids=_b64(vgrp, 'u1'), pivots=[[float(x) for x in p] for p in f['piv']]),
                 targets=[m['label']], target=0, height=float(ch['hi'][2] - ch['lo'][2]))
