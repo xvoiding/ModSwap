@@ -6,6 +6,7 @@ The sections this reader uses (found by reading real files):
     0x65BCF461  sizes            12 bytes per asset: u32 1, u32 size in bytes, u32 asset number
     0xDCD720B5  places           8 bytes per asset:  u32 archive number, u32 offset inside that archive
     0x398ABFF0  archives         72 bytes each: u32, u32, 64-byte name (g00s000, ..., 'mods\\name' for installed mods)
+    Offsets are positions in the archive's DECOMPRESSED stream (see archive.py): most archives are 'DSAR' block-compressed.
 An asset id is a hash of its lower-cased path: CRC-64/XZ run from the start value 0xC96C5795D7870F42, then >> 2, then the top bit set.
 Nothing here writes to the game.
 """
@@ -52,7 +53,7 @@ class Toc:
         o, s = self.sections[SEC_PLACES]; self._places = np.frombuffer(raw, '<u4', self.count * 2, o).reshape(-1, 2)
         o, s = self.sections[SEC_ARCHIVES]
         self.archives = [raw[o + k + 8:o + k + 72].split(b'\0')[0].decode('latin1') for k in range(0, s, 72)]
-        self._order = None
+        self._order = None; self._open = {}
 
     @classmethod
     def open(cls, path):
@@ -74,11 +75,16 @@ class Toc:
     def archive_name(self, i): return self.archives[self.archive(i)]
 
     def read(self, i, archive_dir):
-        """the stored bytes of asset number i, read from its archive file in archive_dir"""
-        with open(os.path.join(archive_dir, self.archive_name(i).replace('\\', os.sep)), 'rb') as f:
-            f.seek(self.offset(i)); data = f.read(self.size(i))
-        if len(data) != self.size(i): raise ValueError('archive %s is shorter than the toc says' % self.archive_name(i))
-        return data
+        """the bytes of asset number i (decompressed if its archive is a DSAR archive), read from the archive files in archive_dir"""
+        from .archive import Archive
+        name = self.archive_name(i).replace('\\', os.sep); key = os.path.join(archive_dir, name)
+        a = self._open.get(key)
+        if a is None: a = self._open[key] = Archive(key)
+        return a.read(self.offset(i), self.size(i))
+
+    def close(self):
+        for a in self._open.values(): a.close()
+        self._open = {}
 
     def references(self, data, skip=()):
         """asset numbers whose id appears inside `data` as an 8-byte value (4- or 8-byte aligned). Ids are 64-bit hashes, so a chance match is

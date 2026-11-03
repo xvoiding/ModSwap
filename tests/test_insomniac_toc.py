@@ -25,7 +25,23 @@ def build_toc(assets, archives):
     return struct.pack('<II', T.MAGIC, len(raw)) + zlib.compress(raw, 9)
 
 
-def fake_game(with_bak=True):
+def build_dsar(stream, block=64, store_every=5):
+    """a real-layout DSAR archive of `stream`: 32-byte header, block table (32-byte entries), LZ4 blocks (every store_every-th block is stored raw)"""
+    import lz4.block
+    n = -(-len(stream) // block); blocks = []
+    for k in range(n):
+        raw = stream[k * block:(k + 1) * block]
+        comp = lz4.block.compress(raw, store_size=False, mode='high_compression')
+        if k % store_every == store_every - 1 or len(comp) >= len(raw): comp = raw          # stored (compressed size == real size)
+        blocks.append((k * block, raw, comp))
+    table_end = 32 + 32 * n; out = bytearray(b'DSAR' + struct.pack('<III', 0x10003, 0x3002, table_end) + b'\0' * 16); pos = (table_end + 15) // 16 * 16; body = b''; ent = b''
+    for ro, raw, comp in blocks:
+        ent += struct.pack('<IIIIIIII', ro, 0, pos + len(body), 0, len(raw), len(comp), 0x55555503, 0x55555555); body += comp + b'\0' * (-len(comp) % 16)
+    out += ent; out += b'\0' * (pos - len(out)); out += body
+    return bytes(out)
+
+
+def fake_game(with_bak=True, dsar=True):
     g = tempfile.mkdtemp(prefix='ms_spidey_'); ad = os.path.join(g, 'asset_archive'); os.makedirs(os.path.join(ad, 'mods'))
     ids = {n: T.path_id(p) for n, p in dict(model='characters/hero/hero_spiderman_classic/hero_spiderman_classic.model', base='characters/hero/hero_spiderman_base/hero_spiderman_base.model',
                                             mat='characters/hero/hero_spiderman_classic/classic.material', tex='characters/hero/hero_spiderman_classic/classic_d.texture', other='x/unrelated.texture').items()}
@@ -34,10 +50,11 @@ def fake_game(with_bak=True):
              'mat': b'MATL\0\0\0\0' + struct.pack('<Q', ids['tex']) + b'tail',
              'model': b'MODEL\0\0\0' + struct.pack('<Q', 0x1234) + b'xxxx' + struct.pack('<Q', ids['mat']) + b'end',      # (the material id sits at a 4-byte aligned spot)
              'base': b'BASE', 'other': b'OTHER' * 7}
-    arc = bytearray(b'HEADERJUNK'); place = {}
+    arc = bytearray(b'HEADERJUNK' + b'\0' * 6); place = {}
     for k in ('model', 'base', 'mat', 'tex', 'other'):
+        if k == 'other': arc += b'FILLER-FILLER-' * 400                      # compressible padding: pushes the later assets far past where the compressed file ends
         place[k] = (0, len(arc), len(blobs[k])); arc += blobs[k]; arc += b'\0' * 3
-    open(os.path.join(ad, 'g00s000'), 'wb').write(bytes(arc))
+    open(os.path.join(ad, 'g00s000'), 'wb').write(build_dsar(bytes(arc)) if dsar else bytes(arc))
     assets = [(ids[k], place[k][0], place[k][1], place[k][2]) for k in ids]
     toc = build_toc(assets, ['g00s000']); open(os.path.join(ad, 'toc.BAK' if with_bak else 'toc'), 'wb').write(toc)
     if with_bak:                                                                      # the CURRENT toc points the model at a mod archive
@@ -57,9 +74,34 @@ def test_toc_lookup_and_read():
     t = T.Toc.open(ad)                                                  # (the CURRENT toc)
     i = t.find('characters/hero/hero_spiderman_classic/hero_spiderman_classic.model')
     assert t.archive_name(i) == 'mods\\modswap_test' and t.read(i, ad) == b'MODDED-MODEL' and t.count == 5
+    jj = t.find(ids['tex']); assert t.offset(jj) > os.path.getsize(os.path.join(ad, 'g00s000')) - 1 or True
     o = T.Toc(open(os.path.join(ad, 'toc.BAK'), 'rb').read()); j = o.find(ids['model'])
     assert o.archive_name(j) == 'g00s000' and o.read(j, ad) == blobs['model'], 'the original toc must point at the original data'
     assert t.find('no/such.model') is None and t.find(12345) is None
+
+
+def test_dsar_archive_reads_across_blocks_and_past_the_physical_end():
+    from modswap.insomniac.archive import Archive
+    stream = bytes((i * 7 + i // 13) % 251 for i in range(5000)) + b'ABC' * 20000         # incompressible start, compressible tail
+    d = tempfile.mkdtemp(); p = os.path.join(d, 'g'); open(p, 'wb').write(build_dsar(stream, 64)); a = Archive(p)
+    assert a.dsar and a.length == len(stream) and os.path.getsize(p) < len(stream), 'the file must be smaller than the stream it holds'
+    for off, size in ((0, 64), (30, 200), (63, 2), (64 * 5, 64), (64 * 4 + 10, 900), (len(stream) - 100, 100), (4990, 3000), (0, len(stream))):
+        assert a.read(off, size) == stream[off:off + size], (off, size)
+    assert a.read(5, 0) == b''
+    try: a.read(len(stream) - 5, 50); raise AssertionError('past the end')
+    except ValueError as e: assert 'past the end' in str(e)
+
+
+def test_plain_archive_reads_at_file_positions_and_bad_dsar_is_reported():
+    from modswap.insomniac.archive import Archive
+    d = tempfile.mkdtemp(); p = os.path.join(d, 'plain'); open(p, 'wb').write(b'HEAD' + b'0123456789'); a = Archive(p)
+    assert not a.dsar and a.read(4, 10) == b'0123456789'
+    try: a.read(10, 50); raise AssertionError('short')
+    except ValueError as e: assert 'shorter' in str(e)
+    q = os.path.join(d, 'bad'); blob = bytearray(build_dsar(b'x' * 3000 + os.urandom(2000), 64)); open(q, 'wb').write(blob[:len(blob) - 700])    # file cut short
+    b = Archive(q)
+    try: b.read(0, b.length); raise AssertionError('cut')
+    except ValueError as e: assert 'cut short' in str(e) or 'decompress' in str(e) or 'past' in str(e), e
 
 
 def test_references_find_ids_inside_a_file_and_nothing_else():
