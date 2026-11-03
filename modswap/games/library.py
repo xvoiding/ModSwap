@@ -50,7 +50,9 @@ class Library:
         self.games = {}
         if os.path.exists(self.path):
             try:
-                for d in json.load(open(self.path)).get('games', []): self.games[d['id']] = Game(**d)
+                for d in json.load(open(self.path)).get('games', []):
+                    g = Game(**d); g.supported = g.engine in detect.SUPPORTED          # decided by the engine NOW, not by a flag an older ModSwap saved
+                    self.games[d['id']] = g
             except Exception: pass
 
     def save(self):

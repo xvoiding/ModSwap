@@ -203,3 +203,12 @@ Windows app.
   they were grouped into characters, and which mesh-looking files were never looked at. If a character is still missing, that file shows why.
 
 Not in this version: Spider-Man (Insomniac engine), Sonic Frontiers / Sonic Colors (Hedgehog Engine). These engines have no support in ModSwap.
+
+**Just Die Already shows "not supported" / "mod files only".** Not the engine: the Windows app keeps a permanent list of games that once hit an error (a pak that
+repak couldn't open, "no .pak files", "not supported yet") in `%APPDATA%\ModSwap\broken.txt` and greys them out for good, whatever the engine says. The file
+also keeps the original error text. Delete it (close ModSwap first) and the game is tried again. The engine side now also ignores a stale "supported: false" in `games.json`.
+Making the app stop doing this needs a change in its C# (see `ui-recovered/`).
+
+**More for SpongeBob-style games.** A mesh package whose SkeletalMesh is not export 0 (characters with face morph targets have extra MorphTarget exports) is now
+recognised (before only export 0 was checked, which would drop exactly such characters). Main/player characters are listed first, props last, and `_mesh` is
+dropped from names. Not confirmed against the game's files. Also found in the layout report: `SK_Fish_Beach_01` has cloth data, which the reader still refuses.

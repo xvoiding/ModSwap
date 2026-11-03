@@ -89,8 +89,11 @@ def read_header(ua_bytes):
         d = parse_uasset(ua_bytes); N = d['names']
         s = lambda x: N[x[0]] if isinstance(x, tuple) else x
         if not d['exports']: return None
-        c = d['exports'][0].get('class', 0)
-        cls = s(d['imports'][-c - 1]['name']) if c < 0 and -c - 1 < len(d['imports']) else ''
+        classes = []
+        for e in d['exports']:                      # characters with face morph targets have MorphTarget exports too: the mesh is not always export 0
+            c = e.get('class', 0)
+            classes.append(s(d['imports'][-c - 1]['name']) if c < 0 and -c - 1 < len(d['imports']) else '')
+        cls = 'SkeletalMesh' if 'SkeletalMesh' in classes else classes[0]
         sk = next((s(im['name']) for im in d['imports'] if s(im['class_name']) == 'Skeleton'), '')
         mats = [s(im['name']) for im in d['imports'] if s(im['class_name']) in ('MaterialInstanceConstant', 'Material', 'MaterialInstance')]
         return cls, sk, mats
@@ -158,7 +161,7 @@ def families(skeletal):
         g[key].append(a)
     fams = []
     for key, items in g.items():
-        label = re.sub(r'^(SK_|SKEL_)|(_Skeleton|_Skel)$', '', key) if not key.startswith('dir:') else key[4:]
+        label = re.sub(r'_mesh$', '', re.sub(r'^(SK_|SKEL_)|(_Skeleton|_Skel)$', '', key), flags=re.I) if not key.startswith('dir:') else key[4:]
         top = defaultdict(int)
         for a in items: top['/'.join(a.folder.split('/')[:2])] += 1
         folder = max(top, key=top.get)
@@ -186,7 +189,18 @@ def families(skeletal):
             for a in body: roots[_root(a.folder)] += 1
             r = max(roots, key=roots.get) if roots else ''
             f.label = '%s  (%s)' % (_nice(r), '/'.join(_segs(r)[:2]))
-    return sorted(out, key=lambda f: -len([a for a in f.assets if a.role != 'piece']))
+    return sorted(out, key=_list_order)
+
+
+MAIN_DIR = re.compile(r'(main_?char|player|protag|hero)', re.I)
+PROP_DIR = re.compile(r'(props?|platforms?|destructable|generic|environment)', re.I)
+
+
+def _list_order(f):
+    """the list the user scrolls: main / player characters first, props last, then biggest groups first"""
+    folders = ' '.join(a.folder for a in f.assets)
+    tier = 0 if MAIN_DIR.search(folders) else 2 if PROP_DIR.search(folders) else 1
+    return (tier, -len([a for a in f.assets if a.role != 'piece']), f.label.lower())
 
 
 MESHY = re.compile(r'(mesh|body|character|chara|skm|_sk\b|skeletal|model)', re.I)

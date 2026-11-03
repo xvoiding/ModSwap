@@ -71,7 +71,7 @@ def _unity_ok(g):
 def _game_json(g):
     label = detect.EngineInfo(g.engine, g.engine_version).label
     return dict(id=g.id, name=g.name, root=g.root, source=g.source, engine=g.engine, version=g.engine_version, label=label,
-                detail=g.engine_detail, supported=g.supported or _unity_ok(g), paks=len(g.paks or []), appid=g.appid)
+                detail=g.engine_detail, supported=(g.engine in detect.SUPPORTED) or _unity_ok(g), paks=len(g.paks or []), appid=g.appid)
 
 
 ART_PREF = ('library_header.jpg', 'header.jpg', 'library_capsule.jpg', 'capsule_616x353.jpg', 'library_600x900.jpg', 'library_hero.jpg')
