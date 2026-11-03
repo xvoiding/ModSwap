@@ -232,6 +232,22 @@ def from_raw(raw, texture_dir=None, path=''):
 
 
 def load_model(path, texture_dir=None):
+    return split_by_material(_load_model(path, texture_dir))
+
+
+def split_by_material(m):
+    """Give every material its own copy of a vertex it shares with another material. The loaders weld by position + normal + uv only, so two materials that meet at the same
+    point would otherwise share ONE vertex, and that vertex can map into only one material's part of the texture atlas: the other material's triangles would then stretch
+    across the wrong part of the picture."""
+    if len(m.tris) == 0 or len(m.images) < 2 and int(m.tri_mat.max(initial=0)) == 0: return m
+    K = int(m.tri_mat.max()) + 1; corner = m.tris.reshape(-1).astype(np.int64) * K + np.repeat(m.tri_mat.astype(np.int64), 3)
+    uniq, inv = np.unique(corner, return_inverse=True); old = uniq // K
+    if len(uniq) == len(np.unique(m.tris)): return m                                  # nothing is shared between materials
+    m2 = Model(m.pos[old], m.nrm[old], m.uv[old], inv.reshape(-1, 3).astype(np.int32), m.tri_mat, m.images, m.mat_names, m.tri_part, m.part_names, m.up, m.source)
+    return m2
+
+
+def _load_model(path, texture_dir=None):
     ext = os.path.splitext(path)[1].lower()
     if ext == '.obj':
         m = load_obj(path, texture_dir)
