@@ -10,6 +10,7 @@ import numpy as np
 
 from .games.library import Library, config_dir
 from .games import detect, running
+from . import viewerlod
 
 WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web')
 UPLOADS = os.path.join(tempfile.gettempdir(), 'modswap_uploads')
@@ -186,7 +187,7 @@ def get_model(sid, parts=None):
 
 
 def api_inspect(sid):
-    from . import skin
+    from . import viewerlod, skin
     from PIL import Image
     key, m = get_model(sid)
     thumbs = []
@@ -228,12 +229,14 @@ def api_fit(body):
         atl, uv = ATLAS[akey]
         b = io.BytesIO(); Image.fromarray(atl).save(b, 'PNG', compress_level=1)     # PNG: no JPEG smearing of the preview texture
         if 'origb64' not in ctx: ctx['origb64'] = {}
-        if ti not in ctx['origb64']: ctx['origb64'][ti] = dict(pos=_b64(opos, '<f4'), idx=_b64(otris, '<u4'), n=len(opos), t=len(otris))
+        if ti not in ctx['origb64']:
+            vo, vt = viewerlod.outline((gid, fam, ti), opos, otris); ctx['origb64'][ti] = dict(pos=_b64(vo, '<f4'), idx=_b64(vt, '<u4'), n=len(vo), t=len(vt))
+        vtris, vpos, vuv, vgrp = viewerlod.apply(viewerlod.cached_plan((mkey, tuple(parts or ()), 'ue'), pos, tris, viewerlod.MODEL_TRIS), tris, pos, uv, info['vgroup'])
         return dict(orig=ctx['origb64'][ti],
-                    new=dict(pos=_b64(pos, '<f4'), idx=_b64(tris, '<u4'), uv=_b64(uv, '<f4'), n=len(pos), t=len(tris)),
+                    new=dict(pos=_b64(vpos, '<f4'), idx=_b64(vtris, '<u4'), uv=_b64(vuv, '<f4'), n=len(vpos), t=len(vtris)),
                     atlas=base64.b64encode(b.getvalue()).decode(),
                     info=dict(forward=info['forward'], scale=float(info['scale']), pivot=info['pivot'], up=info['up']),
-                    groups=dict(names=edit.AUTO_NAMES, ids=_b64(info['vgroup'], 'u1'), pivots=[[float(x) for x in p] for p in info['piv']]),
+                    groups=dict(names=edit.AUTO_NAMES, ids=_b64(vgrp, 'u1'), pivots=[[float(x) for x in p] for p in info['piv']]),
                     targets=[x['name'] if 'name' in x else os.path.basename(x['mesh']) for x in ctx['prof']['targets']], target=ti,
                     height=float(opos[:, 2].max() - opos[:, 2].min()))
 
@@ -272,11 +275,12 @@ def _insomniac_fit(body):
         atl, uv = ATLAS[akey]
         b = io.BytesIO(); Image.fromarray(atl).save(b, 'PNG', compress_level=1)
         info = f['info']
-        return dict(orig=dict(pos=_b64(opos, '<f4'), idx=_b64(otris, '<u4'), n=len(opos), t=len(otris)),
-                    new=dict(pos=_b64(pos, '<f4'), idx=_b64(tris, '<u4'), uv=_b64(uv, '<f4'), n=len(pos), t=len(tris)),
+        vo, vt = viewerlod.outline(('i', gid, body['family']), opos, otris); vtris, vpos, vuv, vgrp = viewerlod.apply(viewerlod.cached_plan((mkey, tuple(parts or ()), 'in'), pos, tris, viewerlod.MODEL_TRIS), tris, pos, uv, f['vgroup'])
+        return dict(orig=dict(pos=_b64(vo, '<f4'), idx=_b64(vt, '<u4'), n=len(vo), t=len(vt)),
+                    new=dict(pos=_b64(vpos, '<f4'), idx=_b64(vtris, '<u4'), uv=_b64(vuv, '<f4'), n=len(vpos), t=len(vtris)),
                     atlas=base64.b64encode(b.getvalue()).decode(),
                     info=dict(forward=info['forward'], scale=float(info['scale']) * 100.0, pivot=[float(x) * 100.0 for x in info['pivot']], up=info['up']),
-                    groups=dict(names=edit.AUTO_NAMES, ids=_b64(f['vgroup'], 'u1'), pivots=[[float(x) * 100.0 for x in p] for p in f['piv']]),
+                    groups=dict(names=edit.AUTO_NAMES, ids=_b64(vgrp, 'u1'), pivots=[[float(x) * 100.0 for x in p] for p in f['piv']]),
                     targets=[m['label']], target=0, height=float(hi[2] - lo[2]))
 
 
@@ -306,11 +310,12 @@ def _unity_fit(body):
             atl, cells = atlas.pack(imgs, mdl.uv, mdl.vert_mat, size=1024); ATLAS[akey] = (atl, atlas.remap_uv(mdl.uv, mdl.vert_mat, cells, 1024))
         atl, uv = ATLAS[akey]
         b = io.BytesIO(); Image.fromarray(atl).save(b, 'PNG', compress_level=1)     # PNG: no JPEG smearing of the preview texture
-        return dict(orig=dict(pos=_b64(opos, '<f4'), idx=_b64(otris, '<u4'), n=len(opos), t=len(otris)),
-                    new=dict(pos=_b64(pos, '<f4'), idx=_b64(mdl.tris, '<u4'), uv=_b64(uv, '<f4'), n=len(pos), t=len(mdl.tris)),
+        vo, vt = viewerlod.outline(('u', gid, body['family']), opos, otris); vtris, vpos, vuv = viewerlod.apply(viewerlod.cached_plan((mkey, tuple(parts or ()), 'us'), pos, mdl.tris, viewerlod.MODEL_TRIS), mdl.tris, pos, uv)
+        return dict(orig=dict(pos=_b64(vo, '<f4'), idx=_b64(vt, '<u4'), n=len(vo), t=len(vt)),
+                    new=dict(pos=_b64(vpos, '<f4'), idx=_b64(vtris, '<u4'), uv=_b64(vuv, '<f4'), n=len(vpos), t=len(vtris)),
                     atlas=base64.b64encode(b.getvalue()).decode(),
                     info=dict(forward=info['forward'], scale=float(info['scale']), pivot=info['pivot'], up=info['up']), static=True,
-                    groups=dict(names=edit.AUTO_NAMES, ids=_b64(np.zeros(len(pos)), 'u1'), pivots=[[0.0, 0.0, 0.0]] * 6),
+                    groups=dict(names=edit.AUTO_NAMES, ids=_b64(np.zeros(len(vpos)), 'u1'), pivots=[[0.0, 0.0, 0.0]] * 6),
                     targets=[m['label']], target=0, height=float(hi[2] - lo[2]))
 
 
@@ -331,11 +336,12 @@ def _unity_fit_rigged(P, m, mkey, mdl, body, adj):
     b = io.BytesIO(); Image.fromarray(atl).save(b, 'PNG', compress_level=1)     # PNG: no JPEG smearing of the preview texture
     info = f['info']; tris = f['tris']
     if not np.isfinite(pos).all(): raise RuntimeError("ModSwap couldn't fit your model onto this character (the numbers came out invalid). Try another model orientation in the Up/Forward options, or pick a different character.")
-    return dict(orig=dict(pos=_b64(opos, '<f4'), idx=_b64(ch['otris'], '<u4'), n=len(opos), t=len(ch['otris'])),
-                new=dict(pos=_b64(pos, '<f4'), idx=_b64(tris, '<u4'), uv=_b64(uv, '<f4'), n=len(pos), t=len(tris)),
+    vo, vt = viewerlod.outline(('r', body['game'], m['label']), opos, ch['otris']); vtris, vpos, vuv, vgrp = viewerlod.apply(viewerlod.cached_plan((mkey, tuple(parts or ()), 'ur'), pos, tris, viewerlod.MODEL_TRIS), tris, pos, uv, f['vgroup'])
+    return dict(orig=dict(pos=_b64(vo, '<f4'), idx=_b64(vt, '<u4'), n=len(vo), t=len(vt)),
+                new=dict(pos=_b64(vpos, '<f4'), idx=_b64(vtris, '<u4'), uv=_b64(vuv, '<f4'), n=len(vpos), t=len(vtris)),
                 atlas=base64.b64encode(b.getvalue()).decode(),
                 info=dict(forward=info['forward'], scale=float(info['scale']), pivot=[float(x) for x in info['pivot']], up=info['up']), static=bool(f['static']),
-                groups=dict(names=edit.AUTO_NAMES, ids=_b64(f['vgroup'], 'u1'), pivots=[[float(x) for x in p] for p in f['piv']]),
+                groups=dict(names=edit.AUTO_NAMES, ids=_b64(vgrp, 'u1'), pivots=[[float(x) for x in p] for p in f['piv']]),
                 targets=[m['label']], target=0, height=float(ch['hi'][2] - ch['lo'][2]))
 
 

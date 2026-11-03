@@ -327,3 +327,12 @@ Also in the app: Sonic Frontiers is detected as "Hedgehog Engine 2", its swappab
   chunk table moves to the end of the root's file data (`pacwrite.py`). Only the model and the 3 textures differ afterwards (tested). Not looked at: Sonic's other forms (`soniccyber`, `supersonic` ...), the
   cyber-space texture variants (`*_cyb_abd`), Sonic Colors: Ultimate.
 * **Confirmed by the Sonic run:** the game accepts the lowered vertex counts, the rewritten `.pac`, the hidden-parts trick and the cloth material on a whole body. Sonic's outline shell and eyes disappear (the user's model brings its own).
+
+## 2.16.1 - big models no longer freeze the app, and the offset sliders are in real centimetres
+* **Freeze fixed.** The 3D viewer builds its meshes on the app's UI thread, and Spider-Man's own outline alone is 216,594 triangles (the viewer also builds an edge mesh from every one), so changing the
+  model / a slider froze the window ("Not responding"). The viewer now gets a reduced copy (`modswap/viewerlod.py`): the faint original at most 14,000 triangles, your model at most 90,000 (a 400,000
+  triangle test model: 3 s per slider change). The reduction is planned once per model and cached; per-vertex data (uvs, body-part groups) follow the kept vertices. Builds NEVER use it: game files
+  are made from the full-detail model. Applied to Unreal, Unity, Spider-Man and Sonic previews.
+* **"Slide to 1, it jumps to 1000" fixed.** The Left/right, Forward/back, Up/down sliders (and the Edit-body-parts move / pivot values) are in centimetres, but the Spider-Man and Sonic rigs are in METRES and
+  the auto-rig adds them in rig units, so 1 cm moved the model 1 m (10 cm moved it 1000 cm). They are converted now (`swap.metres`, `edit.scale_lengths`); tests move a model 10 cm and measure 10 cm on both
+  rigs, and a part move of 10 cm moves only that part by 10 cm. Unreal and Unity were not affected (their rigs are in centimetres). Mods made before this with a non-zero offset slider should be re-made.

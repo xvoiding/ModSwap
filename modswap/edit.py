@@ -68,6 +68,20 @@ def apply_edits(P, N, vg, piv, edits):
     return P, N, hidden
 
 
+def scale_lengths(edits, f):
+    """a copy of `edits` with every length (part moves and custom pivots, which the app sends in centimetres) multiplied by f: 0.01 for rigs that are in metres"""
+    if not edits: return edits
+    out = {'g': {}, 'c': []}
+    def conv(op):
+        op = dict(op)
+        if op.get('move'): op['move'] = [float(x or 0) * f for x in op['move']]
+        if op.get('pivot'): op['pivot'] = [float(x or 0) * f for x in op['pivot']]
+        return op
+    for k, op in (edits.get('g') or {}).items(): out['g'][k] = conv(op)
+    for op in edits.get('c') or []: out['c'].append(conv(op))
+    return out
+
+
 def keep_triangles(tris, hidden):
     """drop triangles whose majority of corners were erased"""
     if hidden is None or not hidden.any(): return tris

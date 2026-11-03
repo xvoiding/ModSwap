@@ -64,6 +64,28 @@ def test_too_many_parts_is_a_clear_error():
     finally: S.MAX_PART_VERTS = old
 
 
+def test_offset_sliders_are_centimetres_not_metres():
+    raw = real_model()
+    if raw is None: print('   (no real model available: skipped)'); return
+    orig = M.Model(raw); h = humanoid(); quiet = lambda *a: None
+    base = S.fit(orig, h, up='+Y', forward='+Z', log=quiet)['pos']
+    for k, axis in (('dx', 0), ('dy', 2), ('dz', 1)):                                   # model frame: x = left, y = up, z = forward
+        d = (S.fit(orig, h, up='+Y', forward='+Z', adjust={k: 10.0}, log=quiet)['pos'] - base).mean(0) * 100
+        assert abs(d[axis] - 10) < 0.01 and abs(np.delete(d, axis)).max() < 0.01, (k, d)
+    f0 = S.fit(orig, h, up='+Y', forward='+Z', log=quiet); f1 = S.fit(orig, h, up='+Y', forward='+Z', edits={'g': {'1': {'move': [0, 0, 10]}}, 'c': []}, log=quiet)
+    sel = f0['vgroup'] == 1; d = f1['pos'] - f0['pos']
+    assert sel.any() and abs(d[sel].mean(0)[1] * 100 - 10) < 0.01 and np.abs(d[~sel]).max() < 1e-9, 'a 10 cm part move moves that part 10 cm'
+
+
+def test_scale_lengths_only_touches_moves_and_pivots():
+    from modswap import edit
+    e = {'g': {'2': {'move': [10, 0, -5], 'scale': 1.5, 'rot': [0, 0, 30]}}, 'c': [{'mask': 'x', 'move': [0, 20, 0], 'pivot': [100, 0, 50], 'scale': 2}]}
+    o = edit.scale_lengths(e, 0.01)
+    assert o['g']['2']['move'] == [0.1, 0.0, -0.05] and o['g']['2']['scale'] == 1.5 and o['g']['2']['rot'] == [0, 0, 30]
+    assert o['c'][0]['move'] == [0.0, 0.2, 0.0] and o['c'][0]['pivot'] == [1.0, 0.0, 0.5] and o['c'][0]['mask'] == 'x' and e['g']['2']['move'] == [10, 0, -5], 'the original is not changed'
+    assert edit.scale_lengths(None, 0.01) is None
+
+
 if __name__ == '__main__':
     n = 0
     for k, f in sorted(globals().items()):

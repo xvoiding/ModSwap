@@ -36,11 +36,19 @@ def front_is_ccw(model):
     fn = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]]); return float((fn * N[F].sum(1)).sum()) > 0
 
 
+def metres(adjust):
+    """the fit sliders' Left/right, Forward/back, Up/down are CENTIMETRES but this rig is in METRES (the auto-rig adds them in rig units): without this 1 cm moved the model 1 m"""
+    a = dict(adjust or {})
+    for k in ('dx', 'dy', 'dz'):
+        if a.get(k): a[k] = float(a[k]) * 0.01
+    return a
+
+
 # ------------------------------------------------------------------ fitting the user's model
 def fit(model0, user, up='+Y', forward=None, scale=1.0, adjust=None, edits=None, atlas_size=1024, log=print):
     """-> dict(pos, nrm, uv, tris, skin_i (N,4) node numbers, skin_w (N,4), atlas, info ...) in the game's model frame (metres, y up, +z forward)"""
     rg = rig_from_hemodel(model0, lod_reference(model0))
-    r = SK.autorig(user.pos, user.nrm, rg, up=up, forward=forward, scale_mult=scale, adjust=adjust, edits=edits, tris=user.tris)
+    r = SK.autorig(user.pos, user.nrm, rg, up=up, forward=forward, scale_mult=scale, adjust=metres(adjust), edits=edit.scale_lengths(edits, 0.01), tris=user.tris)
     log('auto-rig: scale %.3f, facing %s' % (r['info']['scale'], r['info']['forward']))
     pos = to_model_space(r['pos']); nrm = to_model_space(r['nrm'])
     tris = edit.keep_triangles(user.tris, r['hidden']).copy(); tris_view = tris.copy()

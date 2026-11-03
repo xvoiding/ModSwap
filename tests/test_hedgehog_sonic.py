@@ -127,6 +127,15 @@ def test_whole_swap_changes_only_the_model_and_three_textures_and_textures_land_
     assert any('Head' in n for n in dom) and any('Hand' in n or 'Arm' in n for n in dom) and any('Foot' in n or 'Leg' in n or 'Toe' in n for n in dom), 'skin lands on head, arm and leg bones'
 
 
+def test_offset_sliders_are_centimetres_not_metres_for_sonic_too():
+    if CHAR_DIR is None: return SKIP()
+    ch = sonic.Character(open(os.path.join(CHAR_DIR, 'sonic.pac'), 'rb').read()); h = humanoid(); quiet = lambda *a: None
+    base = ch.fit(h, up='+Y', forward='+Z', log=quiet)['pos']
+    for k, axis in (('dx', 0), ('dy', 2), ('dz', 1)):
+        d = (ch.fit(h, up='+Y', forward='+Z', adjust={k: 10.0}, log=quiet)['pos'] - base).mean(0) * 100
+        assert abs(d[axis] - 10) < 0.01 and abs(np.delete(d, axis)).max() < 0.01, (k, d)
+
+
 def test_a_model_too_big_for_a_slot_is_reduced_not_refused():
     if CHAR_DIR is None: return SKIP()
     raw = open(os.path.join(CHAR_DIR, 'sonic.pac'), 'rb').read(); ch = sonic.Character(raw); f = ch.fit(humanoid(), up='+Y', forward='+Z', log=lambda *a: None)

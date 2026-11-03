@@ -41,6 +41,14 @@ def skins_from_autorig(skin_i, skin_w):
     return out
 
 
+def metres(adjust):
+    """the fit sliders' Left/right, Forward/back, Up/down are CENTIMETRES but this rig is in METRES (the auto-rig adds them in rig units): without this 1 cm moved the model 1 m"""
+    a = dict(adjust or {})
+    for k in ('dx', 'dy', 'dz'):
+        if a.get(k): a[k] = float(a[k]) * 0.01
+    return a
+
+
 def lod0_rig(orig, lod0_meshes=23):
     """-> (rig dict for skin.autorig, LOD0 vertex positions in the model's frame)"""
     meshes = orig.meshes(); st = orig.streams()
@@ -51,7 +59,7 @@ def lod0_rig(orig, lod0_meshes=23):
 def fit(orig, user, up='+Y', forward=None, scale=1.0, adjust=None, edits=None, lod0_meshes=23, atlas_size=2048, log=print, rig=None):
     """-> dict(pos, nrm, uv, tris, skin, atlas (H,W,3) uint8, info) all in Spider-Man's frame (metres, y up, +z forward), ready for build()"""
     rg = rig if rig is not None else lod0_rig(orig, lod0_meshes)[0]
-    r = skin.autorig(user.pos, user.nrm, rg, up=up, forward=forward, scale_mult=scale, adjust=adjust, edits=edits, tris=user.tris)
+    r = skin.autorig(user.pos, user.nrm, rg, up=up, forward=forward, scale_mult=scale, adjust=metres(adjust), edits=edit.scale_lengths(edits, 0.01), tris=user.tris)
     log('auto-rig: scale %.3f, facing %s' % (r['info']['scale'], r['info']['forward']))
     pos = R.to_model_space(r['pos']); nrm = R.to_model_space(r['nrm'])
     tris = edit.keep_triangles(user.tris, r['hidden']).copy(); tris_view = tris.copy()
