@@ -39,6 +39,27 @@ def test_collects_the_right_things_and_changes_nothing():
     assert hashes(game) == before, 'the collector must never modify the game folder'
 
 
+def test_include_copies_named_files_whole_and_first():
+    game = fake_game(); out = os.path.join(tempfile.mkdtemp(), 'inc.zip'); logs = []
+    C.collect(game, out, 8, log=logs.append, include=['data/a.pac', 'DATA/*.DDS', 'nothing/here.bin'])          # patterns are case-insensitive; 8 MB budget
+    z = zipfile.ZipFile(out); whole = [n for n in z.namelist() if n.startswith('whole/')]
+    assert 'whole/data/a.pac' in whole and len([n for n in whole if n.endswith('.dds')]) == 60, whole[:5]
+    assert z.read('whole/data/a.pac') == open(os.path.join(game, 'data', 'a.pac'), 'rb').read(), 'must be byte for byte'
+    assert any('no file matches' in l and 'nothing/here.bin' in l for l in logs)
+    # included files come first: a budget that only fits one of the big archives still gets the one that was asked for
+    out2 = os.path.join(tempfile.mkdtemp(), 'inc2.zip'); logs2 = []
+    C.collect(game, out2, 6.5, log=logs2.append, include=['data/a.pac', 'data/b.pac'])
+    names2 = zipfile.ZipFile(out2).namelist(); assert 'whole/data/a.pac' in names2 and 'whole/data/b.pac' not in names2 and any('does not fit' in l for l in logs2)
+
+
+def test_only_mode_skips_heads_and_small_files():
+    game = fake_game(); out = os.path.join(tempfile.mkdtemp(), 'only.zip')
+    C.collect(game, out, 20, log=lambda *a: None, include=['data/b.pac'], only=True)
+    names = zipfile.ZipFile(out).namelist()
+    assert 'whole/data/b.pac' in names and 'tree.txt' in names
+    assert not [n for n in names if n.startswith(('heads/', 'small/'))], names
+
+
 def test_respects_the_budget():
     game = fake_game(); out = os.path.join(tempfile.mkdtemp(), 's.zip')
     C.collect(game, out, 0.2, log=lambda *a: None)                   # 0.2 MB budget
@@ -49,8 +70,9 @@ def test_respects_the_budget():
 
 def test_command_line_runs():
     game = fake_game(); out = os.path.join(tempfile.mkdtemp(), 'cli.zip')
-    r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'tools', 'collect_samples.py'), game, out, '--budget', '5'], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'tools', 'collect_samples.py'), game, out, '--budget', '8', '--include', 'data/b.pac'], capture_output=True, text=True)
     assert r.returncode == 0 and os.path.getsize(out) > 0 and 'zip written' in r.stdout, r.stderr
+    assert 'whole/data/b.pac' in zipfile.ZipFile(out).namelist()
 
 
 def test_missing_folder_is_a_clear_error():

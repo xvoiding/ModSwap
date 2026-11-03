@@ -234,3 +234,14 @@ What was checked and what changed:
 - **Rebuild without remaking:** `runtime\python.exe -m modswap rebuild` redoes every saved mod that kept its model (made with 2.14 or newer) with every setting exactly as before,
   and installed mods stay installed. Mods made before 2.14 only have the finished file: make those once more.
 NOT verified in a running game. Which of the above was the cause for SpongeBob / JDA depends on those games' texture files, and the report will show it.
+
+## Next: Spider-Man and Sonic Frontiers (in progress, nothing swappable yet)
+Studied from the real game files (sample zips via `tools/collect_samples.py`):
+* **Sonic Frontiers** (build 16857613): every archive is `PACx403L` (Hedgehog Engine 2 PACx v403, little-endian, LZ4-compressed root in 65,536-byte chunks, metadata block with parent list).
+  Characters are in `image/x64/raw/character/*.pac` (sonic, sonic_birthday/crown/cyber, supersonic*, amy, tails, knuckles, big, eggman, sage, ...). Format reference: HedgeLib (MIT).
+* **Spider-Man Remastered** (build 23986256): the whole game is ~2 GB archives (`g00s000`...) plus `asset_archive/toc`, a zlib-compressed `DAT1` index of 771,677 assets
+  (`modswap/insomniac/toc.py`, my own reader, checked against the real file: ids, sizes, archive + offset; asset id = CRC-64/XZ-style hash of the lower-cased path).
+  The classic suit is `characters/hero/hero_spiderman_classic/hero_spiderman_classic.model` (11 MB, original in `g00s001`). The earlier ModSwap test mod redirected it to
+  `asset_archive/mods/modswap_test` by adding an archive entry to the toc (a 96-byte-smaller copy of the original), which is how Spider-Man was swapped before.
+* `tools/collect_spiderman.py` pulls the original suit model and everything it references (materials, textures) plus the earlier mod, `tools/collect_samples.py --include/--only` pulls named archives whole.
+NOT done: reading `.model` / `.texture` contents, writing a new model, patching the toc, any Sonic archive reading beyond the header. ALERT (Tkachov) documents the Insomniac formats but is GPL-3.0, so nothing is copied from it.

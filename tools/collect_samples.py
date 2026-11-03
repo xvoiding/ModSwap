@@ -7,11 +7,12 @@ What goes in the zip (nothing is changed or uploaded; it only READS the game fol
   extensions.txt     how many files / how many MB per file type
   manifest.txt       the Steam appmanifest of the game (version / build id), if found
   heads/...          the first 256 KB and the last 64 KB of every big file (archive headers and file tables live there)
+  whole/...          files you asked for with --include PATTERN (repeatable), copied whole and first
   index/...          index files such as Spider-Man's 'toc', whole (up to 40 MB)
   small/...          whole copies of small files (up to 3 MB each), a few of every file type
 The zip stays under --budget MB (default 60), so it can be pushed to GitHub.
 """
-import os, sys, re, zipfile, hashlib, argparse, collections
+import os, sys, re, zipfile, hashlib, argparse, collections, fnmatch
 
 HEAD = 256 * 1024; TAIL = 64 * 1024; SMALL = 3 * 1024 * 1024; PER_EXT = 25
 
@@ -50,7 +51,7 @@ def arc(prefix, rel, suffix=''):
     return '%s/%s__%s%s' % (prefix, re.sub(r'[^A-Za-z0-9._-]+', '_', rel)[-110:], h, suffix)
 
 
-def collect(root, out_zip, budget_mb=60, log=print):
+def collect(root, out_zip, budget_mb=60, log=print, include=(), only=False):
     root = os.path.abspath(root)
     if not os.path.isdir(root): raise SystemExit('not a folder: ' + root)
     files = list(walk(root))
@@ -65,39 +66,53 @@ def collect(root, out_zip, budget_mb=60, log=print):
         B.add('extensions.txt', '\n'.join('%-14s %8d files %10.1f MB' % (e or '(none)', len(v), sum(s for _, s in v) / 1e6) for e, v in sorted(byext.items(), key=lambda kv: -sum(s for _, s in kv[1]))).encode())
         mf = find_manifest(root)
         if mf: B.add('manifest.txt', mf.encode('utf-8', 'replace'))
+        # files asked for by name (--include): copied WHOLE and FIRST, so the budget cannot run out before them
+        n_inc = 0
+        for pat in include:
+            hit = [(p, sz) for p, sz in files if fnmatch.fnmatch(rel(p).lower(), pat.replace('\\', '/').lower())]
+            if not hit: log('  --include %s: no file matches' % pat)
+            for p, sz in hit:
+                if sz > 150 * 1024 * 1024: log('  skipped %s: %.0f MB is too big to include whole' % (rel(p), sz / 1e6)); continue
+                try: data = open(p, 'rb').read()
+                except OSError as e: log('  could not read %s: %s' % (rel(p), e)); continue
+                if B.add('whole/' + rel(p), data): n_inc += 1; log('  included whole: %s (%.1f MB)' % (rel(p), sz / 1e6))
+                else: log('  does not fit the budget: %s (%.1f MB), raise --budget' % (rel(p), sz / 1e6))
         # index files that say where every asset lives (Spider-Man's 'toc'): taken WHOLE, up to 40 MB, before anything else uses the budget
         for p, sz in files:
             if os.path.basename(p).lower() in ('toc', 'toc.bak') or p.lower().endswith('.toc'):
                 if sz <= 40 * 1024 * 1024:
                     try: B.add(arc('index', rel(p)), open(p, 'rb').read())
                     except OSError: pass
-        # archive headers: the start and end of every big file (bounded: biggest-count extensions get a cap so the budget is shared fairly)
-        big = [(p, s) for p, s in files if s > SMALL]
-        per = collections.Counter(); n_heads = 0
-        for p, s in sorted(big, key=lambda x: x[1]):
-            e = os.path.splitext(p)[1].lower()
-            if per[e] >= 400: continue
-            try:
-                with open(p, 'rb') as f:
-                    head = f.read(HEAD); f.seek(max(HEAD, s - TAIL)); tail = f.read(TAIL) if s > HEAD + TAIL else b''
-            except OSError: continue
-            if B.add(arc('heads', rel(p), '.head'), head):
-                n_heads += 1; per[e] += 1
-                if tail: B.add(arc('heads', rel(p), '.tail'), tail)
-        # whole small files: a few of every type, spread across the folder tree
-        n_small = 0
-        for e, items in sorted(byext.items(), key=lambda kv: len(kv[1])):
-            cand = [(p, s) for p, s in items if 0 < s <= SMALL]
-            cand.sort(key=lambda x: x[0]); step = max(1, len(cand) // PER_EXT)
-            for p, s in cand[::step][:PER_EXT]:
-                try: data = open(p, 'rb').read()
+        n_heads = n_small = 0
+        if not only:
+            # archive headers: the start and end of every big file (bounded: biggest-count extensions get a cap so the budget is shared fairly)
+            big = [(p, s) for p, s in files if s > SMALL]
+            per = collections.Counter(); n_heads = 0
+            for p, s in sorted(big, key=lambda x: x[1]):
+                e = os.path.splitext(p)[1].lower()
+                if per[e] >= 400: continue
+                try:
+                    with open(p, 'rb') as f:
+                        head = f.read(HEAD); f.seek(max(HEAD, s - TAIL)); tail = f.read(TAIL) if s > HEAD + TAIL else b''
                 except OSError: continue
-                if B.add(arc('small', rel(p)), data): n_small += 1
-        log('zip written: %s  (%d big-file heads, %d small files, %.1f MB, %d items did not fit the budget)' % (out_zip, n_heads, n_small, os.path.getsize(out_zip) / 1e6, B.skipped))
+                if B.add(arc('heads', rel(p), '.head'), head):
+                    n_heads += 1; per[e] += 1
+                    if tail: B.add(arc('heads', rel(p), '.tail'), tail)
+            # whole small files: a few of every type, spread across the folder tree
+            n_small = 0
+            for e, items in sorted(byext.items(), key=lambda kv: len(kv[1])):
+                cand = [(p, s) for p, s in items if 0 < s <= SMALL]
+                cand.sort(key=lambda x: x[0]); step = max(1, len(cand) // PER_EXT)
+                for p, s in cand[::step][:PER_EXT]:
+                    try: data = open(p, 'rb').read()
+                    except OSError: continue
+                    if B.add(arc('small', rel(p)), data): n_small += 1
+        log('zip written: %s  (%d included whole, %d big-file heads, %d small files, %.1f MB, %d items did not fit the budget)' % (out_zip, n_inc, n_heads, n_small, os.path.getsize(out_zip) / 1e6, B.skipped))
     return out_zip
 
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('game_folder'); ap.add_argument('out_zip'); ap.add_argument('--budget', type=float, default=60, help='max size of the collected data in MB (default 60)')
-    a = ap.parse_args(); collect(a.game_folder, a.out_zip, a.budget)
+    ap.add_argument('game_folder'); ap.add_argument('out_zip'); ap.add_argument('--include', action='append', default=[], metavar='PATTERN', help='copy files whose path (relative to the game folder) matches this pattern whole, e.g. "image/x64/raw/character/sonic.pac"')
+    ap.add_argument('--only', action='store_true', help='only the file list and the --include files (no archive heads, no small files)'); ap.add_argument('--budget', type=float, default=60, help='max size of the collected data in MB (default 60)')
+    a = ap.parse_args(); collect(a.game_folder, a.out_zip, a.budget, include=a.include, only=a.only)
