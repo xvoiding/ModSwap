@@ -355,3 +355,9 @@ Also in the app: Sonic Frontiers is detected as "Hedgehog Engine 2", its swappab
 ## Repair: "Couldn't start the engine ... not a valid application for this OS platform"
 `runtime\python.exe` (ModSwap's private Python) is damaged or missing (a zero-byte / truncated file, often antivirus or a failed copy). Put `Repair-Runtime.bat` and `Repair-Runtime.ps1` in the ModSwap folder and double-click the
 .bat: it downloads the official embeddable Python 3.12 from python.org, installs pip and everything in `requirements.txt`, and keeps the old folder renamed as `runtime_broken_<time>`.
+
+## 2.16.4 - the app now says what it is waiting for
+* A job that has to wait for another running job (all jobs share one lock) now shows "waiting for another task to finish..." instead of looking stuck on "Reading the game files...", and every job
+  starts with "starting ..." (the first run after an update / after rebuilding `runtime` compiles and virus-scans thousands of files and can take a minute).
+* The engine writes `engine.log` into the ModSwap config folder (`%APPDATA%\\ModSwap\\engine.log`): when each job was queued, started, how long it waited, every log line it printed, and the full error if it failed.
+  Send that file (and `%APPDATA%\\ModSwap\\modswap.log`) when something hangs.

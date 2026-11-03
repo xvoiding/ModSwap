@@ -24,17 +24,32 @@ mimetypes.add_type('application/javascript', '.js'); mimetypes.add_type('image/s
 
 
 # ------------------------------------------------------------------ jobs
+def _dlog(text):
+    """a line in <ModSwap config folder>\\engine.log (what the engine did and when: send this file when something hangs or fails)"""
+    try:
+        import time
+        with open(os.path.join(config_dir(), 'engine.log'), 'a', encoding='utf-8') as f: f.write(time.strftime('%H:%M:%S ') + text + '\n')
+    except Exception: pass
+
+
 def _job(fn):
     jid = uuid.uuid4().hex[:8]; j = dict(id=jid, log=[], done=False, error=None, result=None); JOBS[jid] = j
 
-    def log(*a): j['log'].append(' '.join(str(x) for x in a))
+    def log(*a):
+        line = ' '.join(str(x) for x in a); j['log'].append(line); _dlog('  [%s] %s' % (jid, line))
 
     def run():
+        import time
+        t0 = time.time(); _dlog('job %s %s: queued' % (jid, getattr(fn, '__qualname__', 'work')))
         try:
-            with LOCK: j['result'] = fn(log)
+            if not LOCK.acquire(False):
+                log('waiting for another task to finish...'); LOCK.acquire()
+            try:
+                _dlog('job %s: running (waited %.1fs)' % (jid, time.time() - t0)); j['result'] = fn(log)
+            finally: LOCK.release()
         except Exception as e:
-            j['error'] = _msg(e); j['log'].append(traceback.format_exc(limit=4))
-        finally: j['done'] = True
+            j['error'] = _msg(e); j['log'].append(traceback.format_exc(limit=4)); _dlog('job %s FAILED: %s\n%s' % (jid, _msg(e), traceback.format_exc(limit=6)))
+        finally: j['done'] = True; _dlog('job %s: finished in %.1fs' % (jid, time.time() - t0))
     threading.Thread(target=run, daemon=True).start()
     return jid
 
@@ -121,6 +136,7 @@ def api_characters(gid):
     lib = Library(); g = _game(lib, gid)
 
     def work(log):
+        log('starting (the first time after an update this can take a minute) ...')
         P = _project(g)
         if g.engine in ('insomniac', 'hedgehog2'):
             log('reading the game files...'); ch = P.describe(log=log); return dict(characters=ch, items=[], total_files=0, unity=True, rigged=len(ch), hidden=sum(1 for c in ch if c.get('hidden')), engine='2.6')
