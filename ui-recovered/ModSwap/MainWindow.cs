@@ -300,7 +300,7 @@ public class MainWindow : Window, IComponentConnector
 
 		internal bool _003CUploadPaths_003Eb__74_0(string f)
 		{
-			return Wanted.Contains(Path.GetExtension(f));
+			return Wanted.Contains(System.IO.Path.GetExtension(f));
 		}
 
 		internal int _003CFinishLoad_003Eb__75_0(JsonElement x)
@@ -968,7 +968,7 @@ public class MainWindow : Window, IComponentConnector
 
 	private bool _contentLoaded;
 
-	private static string BrokenFile => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ModSwap", "broken.txt");
+	private static string BrokenFile => System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ModSwap", "broken.txt");
 
 	private static string AppVer
 	{
@@ -1260,7 +1260,7 @@ public class MainWindow : Window, IComponentConnector
 		{
 			try
 			{
-				string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ModSwap", "modswap.log");
+				string path = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ModSwap", "modswap.log");
 				string text = (File.Exists(path) ? string.Join("\n", File.ReadAllLines(path).Reverse().Take(250)
 					.Reverse()) : "(no log yet)");
 				Clipboard.SetText(string.Concat("ModSwap " + AppVer + "  ·  " + Environment.OSVersion?.ToString() + "  ·  game: " + ((cur == null) ? "none" : (cur.Name + " [" + cur.Label + "]")), "\n\n", text));
@@ -1385,7 +1385,7 @@ public class MainWindow : Window, IComponentConnector
 	protected override void OnSourceInitialized(EventArgs e)
 	{
 		//IL_0008: Unknown result type (might be due to invalid IL or missing references)
-		((Window)this).OnSourceInitialized(e);
+		base.OnSourceInitialized(e);
 		try
 		{
 			IntPtr handle = new WindowInteropHelper((Window)(object)this).Handle;
@@ -1846,7 +1846,7 @@ public class MainWindow : Window, IComponentConnector
 				await ScanSteam(loud: false);
 			}
 			Anim.Out_((FrameworkElement)(object)Boot, 380.0);
-			if (File.Exists(Path.Combine(Backend.AppDir, "selftest.txt")))
+			if (File.Exists(System.IO.Path.Combine(Backend.AppDir, "selftest.txt")))
 			{
 				SelfTest();
 			}
@@ -1864,6 +1864,7 @@ public class MainWindow : Window, IComponentConnector
 
 	private void LoadBroken()
 	{
+		return;   // ModSwap 2.14: a game is never marked "can't edit yet" for good any more (that list also kept games greyed out after a one-off error)
 		try
 		{
 			string[] array = File.ReadAllLines(BrokenFile);
@@ -1889,7 +1890,7 @@ public class MainWindow : Window, IComponentConnector
 	{
 		try
 		{
-			Directory.CreateDirectory(Path.GetDirectoryName(BrokenFile));
+			Directory.CreateDirectory(System.IO.Path.GetDirectoryName(BrokenFile));
 			File.WriteAllLines(BrokenFile, new string[1] { "#v\t" + AppVer }.Concat(broken.Select((KeyValuePair<string, string> kv) => kv.Key + "\t" + kv.Value)));
 		}
 		catch
@@ -1964,7 +1965,7 @@ public class MainWindow : Window, IComponentConnector
 		fit = null;
 		viewer.Clear();
 		ShowPlaceholder(on: true);
-		if (permanent && g != null)
+		if (false && permanent && g != null)
 		{
 			broken[g.Id] = text;
 			SaveBroken();
@@ -2681,7 +2682,7 @@ public class MainWindow : Window, IComponentConnector
 	{
 		//IL_003d: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0099: Unknown result type (might be due to invalid IL or missing references)
-		((UIElement)this).OnDrop(e);
+		base.OnDrop(e);
 		DragState(over: false);
 		if (!e.Data.GetDataPresent(DataFormats.FileDrop))
 		{
@@ -2718,7 +2719,7 @@ public class MainWindow : Window, IComponentConnector
 			if (Directory.Exists(path))
 			{
 				list.AddRange(from f in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories)
-					where Wanted.Contains(Path.GetExtension(f))
+					where Wanted.Contains(System.IO.Path.GetExtension(f))
 					select f);
 			}
 			else if (File.Exists(path))
@@ -2828,7 +2829,7 @@ public class MainWindow : Window, IComponentConnector
 		FileChips.ItemsSource = files.Select((string f) => new FileChip
 		{
 			Name = f,
-			Tint = (Brush)((!img.Contains(Path.GetExtension(f))) ? ((object)Brushes.White) : ((object)new SolidColorBrush(Color.FromRgb((byte)142, (byte)142, (byte)142))))
+			Tint = (Brush)((!img.Contains(System.IO.Path.GetExtension(f))) ? ((object)Brushes.White) : ((object)new SolidColorBrush(Color.FromRgb((byte)142, (byte)142, (byte)142))))
 		}).ToList();
 		((UIElement)AxisPanel).Visibility = (Visibility)((!hasValue) ? 2 : 0);
 		Button btnAdv = BtnAdv;
@@ -3247,7 +3248,7 @@ public class MainWindow : Window, IComponentConnector
 				BuildTargets(jsonElement);
 				if (ModName.Text.Length == 0 && info.HasValue)
 				{
-					ModName.Text = Path.GetFileNameWithoutExtension(info.Value.GetProperty("file").GetString());
+					ModName.Text = System.IO.Path.GetFileNameWithoutExtension(info.Value.GetProperty("file").GetString());
 				}
 				UpdateSteps();
 				if (!installing)
@@ -5200,7 +5201,7 @@ public class MainWindow : Window, IComponentConnector
 				if (((CommonDialog)val2).ShowDialog((Window)(object)this).GetValueOrDefault())
 				{
 					File.Copy(row.Pak, ((FileDialog)val2).FileName, overwrite: true);
-					Toast("Saved " + Path.GetFileName(((FileDialog)val2).FileName));
+					Toast("Saved " + System.IO.Path.GetFileName(((FileDialog)val2).FileName));
 				}
 				break;
 			}
@@ -5231,7 +5232,7 @@ public class MainWindow : Window, IComponentConnector
 
 	private static string Regex_Safe(string s)
 	{
-		char[] bad = Path.GetInvalidFileNameChars();
+		char[] bad = System.IO.Path.GetInvalidFileNameChars();
 		string text = new string(s.Select((char c) => (!bad.Contains(c)) ? c : '_').ToArray()).Trim();
 		if (text.Length != 0)
 		{
@@ -5296,7 +5297,7 @@ public class MainWindow : Window, IComponentConnector
 	{
 		try
 		{
-			File.AppendAllText(Path.Combine(stDir, "selftest.log"), DateTime.Now.ToString("HH:mm:ss ") + s + Environment.NewLine);
+			File.AppendAllText(System.IO.Path.Combine(stDir, "selftest.log"), DateTime.Now.ToString("HH:mm:ss ") + s + Environment.NewLine);
 		}
 		catch
 		{
@@ -5319,7 +5320,7 @@ public class MainWindow : Window, IComponentConnector
 			val.Render((Visual)(object)Root);
 			PngBitmapEncoder val2 = new PngBitmapEncoder();
 			((BitmapEncoder)val2).Frames.Add(BitmapFrame.Create((BitmapSource)(object)val));
-			using (FileStream fileStream = File.Create(Path.Combine(stDir, name + ".png")))
+			using (FileStream fileStream = File.Create(System.IO.Path.Combine(stDir, name + ".png")))
 			{
 				((BitmapEncoder)val2).Save((Stream)fileStream);
 			}
@@ -5342,7 +5343,7 @@ public class MainWindow : Window, IComponentConnector
 
 	private async Task SelfTest()
 	{
-		string[] cfg = (from x in File.ReadAllLines(Path.Combine(Backend.AppDir, "selftest.txt"))
+		string[] cfg = (from x in File.ReadAllLines(System.IO.Path.Combine(Backend.AppDir, "selftest.txt"))
 			select x.Trim() into x
 			where x.Length > 0
 			select x).ToArray();

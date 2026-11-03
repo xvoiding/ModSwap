@@ -15,7 +15,7 @@ public class App : Application
 	{
 		get
 		{
-			string text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ModSwap");
+			string text = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ModSwap");
 			try
 			{
 				Directory.CreateDirectory(text);
@@ -31,7 +31,7 @@ public class App : Application
 	{
 		try
 		{
-			File.AppendAllText(Path.Combine(LogDir, "modswap.log"), DateTime.Now.ToString("HH:mm:ss ") + text + Environment.NewLine);
+			File.AppendAllText(System.IO.Path.Combine(LogDir, "modswap.log"), DateTime.Now.ToString("HH:mm:ss ") + text + Environment.NewLine);
 		}
 		catch
 		{
@@ -42,7 +42,7 @@ public class App : Application
 	{
 		//IL_000f: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0019: Expected O, but got Unknown
-		((Application)this).OnStartup(e);
+		base.OnStartup(e);
 		((Application)this).DispatcherUnhandledException += (DispatcherUnhandledExceptionEventHandler)delegate(object s, DispatcherUnhandledExceptionEventArgs a)
 		{
 			//IL_008d: Unknown result type (might be due to invalid IL or missing references)
@@ -54,7 +54,7 @@ public class App : Application
 			}
 			else
 			{
-				MessageBox.Show("ModSwap couldn't start.\n\n" + a.Exception.Message + "\n\nDetails are in " + Path.Combine(LogDir, "modswap.log"), "ModSwap", (MessageBoxButton)0, (MessageBoxImage)16);
+				MessageBox.Show("ModSwap couldn't start.\n\n" + a.Exception.Message + "\n\nDetails are in " + System.IO.Path.Combine(LogDir, "modswap.log"), "ModSwap", (MessageBoxButton)0, (MessageBoxImage)16);
 				((Application)this).Shutdown(1);
 			}
 		};

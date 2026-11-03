@@ -6,6 +6,7 @@
     <UseWPF>True</UseWPF>
     <TargetFramework>net8.0-windows</TargetFramework>
     <PlatformTarget>x64</PlatformTarget>
+    <RollForward>LatestMajor</RollForward>
   </PropertyGroup>
   <PropertyGroup>
     <LangVersion>11.0</LangVersion>
@@ -16,14 +17,7 @@
     <RootNamespace />
   </PropertyGroup>
   <ItemGroup>
-    <None Remove="assets/modswap.ico" />
-    <None Remove="theme.baml" />
-    <None Remove="mainwindow.baml" />
-    <None Remove="app.baml" />
-    <EmbeddedResource Include="assets/modswap.ico" LogicalName="assets/modswap.ico" />
-    <EmbeddedResource Include="theme.baml" LogicalName="theme.baml" />
-    <EmbeddedResource Include="mainwindow.baml" LogicalName="mainwindow.baml" />
-    <EmbeddedResource Include="app.baml" LogicalName="app.baml" />
+    <EmbeddedResource Include="ModSwap.g.resources" LogicalName="ModSwap.g.resources" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="PresentationCore" />

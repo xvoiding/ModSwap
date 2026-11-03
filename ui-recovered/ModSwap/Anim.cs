@@ -29,7 +29,7 @@ public static class Anim
 		double opacity = el.Opacity;
 		el.BeginAnimation(UIElement.OpacityProperty, (AnimationTimeline)null);
 		el.Opacity = to;
-		el.BeginAnimation(UIElement.OpacityProperty, (AnimationTimeline)new DoubleAnimation(opacity, to, Duration.op_Implicit(TimeSpan.FromMilliseconds(ms)))
+		el.BeginAnimation(UIElement.OpacityProperty, (AnimationTimeline)new DoubleAnimation(opacity, to, (Duration)(TimeSpan.FromMilliseconds(ms)))
 		{
 			EasingFunction = Out,
 			FillBehavior = (FillBehavior)1
@@ -68,13 +68,13 @@ public static class Anim
 		((UIElement)el).BeginAnimation(UIElement.OpacityProperty, (AnimationTimeline)null);
 		((UIElement)el).Opacity = 1.0;
 		TimeSpan value = TimeSpan.FromMilliseconds(delay);
-		((UIElement)el).BeginAnimation(UIElement.OpacityProperty, (AnimationTimeline)new DoubleAnimation(0.0, 1.0, Duration.op_Implicit(TimeSpan.FromMilliseconds(ms)))
+		((UIElement)el).BeginAnimation(UIElement.OpacityProperty, (AnimationTimeline)new DoubleAnimation(0.0, 1.0, (Duration)(TimeSpan.FromMilliseconds(ms)))
 		{
 			EasingFunction = Out,
 			BeginTime = value,
 			FillBehavior = (FillBehavior)1
 		});
-		((Animatable)obj).BeginAnimation(TranslateTransform.YProperty, (AnimationTimeline)new DoubleAnimation(dy, 0.0, Duration.op_Implicit(TimeSpan.FromMilliseconds(ms + 80.0)))
+		((Animatable)obj).BeginAnimation(TranslateTransform.YProperty, (AnimationTimeline)new DoubleAnimation(dy, 0.0, (Duration)(TimeSpan.FromMilliseconds(ms + 80.0)))
 		{
 			EasingFunction = Out,
 			BeginTime = value,
@@ -88,7 +88,7 @@ public static class Anim
 		//IL_0033: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0038: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0044: Expected O, but got Unknown
-		DoubleAnimation val = new DoubleAnimation(((UIElement)el).Opacity, 0.0, Duration.op_Implicit(TimeSpan.FromMilliseconds(ms)))
+		DoubleAnimation val = new DoubleAnimation(((UIElement)el).Opacity, 0.0, (Duration)(TimeSpan.FromMilliseconds(ms)))
 		{
 			EasingFunction = Out
 		};
@@ -109,7 +109,7 @@ public static class Anim
 		//IL_0012: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0017: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0027: Expected O, but got Unknown
-		((Animatable)b).BeginAnimation(SolidColorBrush.ColorProperty, (AnimationTimeline)new ColorAnimation(to, Duration.op_Implicit(TimeSpan.FromMilliseconds(ms)))
+		((Animatable)b).BeginAnimation(SolidColorBrush.ColorProperty, (AnimationTimeline)new ColorAnimation(to, (Duration)(TimeSpan.FromMilliseconds(ms)))
 		{
 			EasingFunction = Out
 		});
@@ -146,7 +146,7 @@ public static class Anim
 		//IL_0019: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0023: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0033: Expected O, but got Unknown
-		((Animatable)t).BeginAnimation(TranslateTransform.XProperty, (AnimationTimeline)new DoubleAnimation(from, to, Duration.op_Implicit(TimeSpan.FromMilliseconds(ms)))
+		((Animatable)t).BeginAnimation(TranslateTransform.XProperty, (AnimationTimeline)new DoubleAnimation(from, to, (Duration)(TimeSpan.FromMilliseconds(ms)))
 		{
 			RepeatBehavior = RepeatBehavior.Forever,
 			EasingFunction = InOut

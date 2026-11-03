@@ -18,7 +18,7 @@ public class Backend : IDisposable
 		get
 		{
 			string processPath = Environment.ProcessPath;
-			return ((processPath != null) ? Path.GetDirectoryName(processPath) : null) ?? AppContext.BaseDirectory;
+			return ((processPath != null) ? System.IO.Path.GetDirectoryName(processPath) : null) ?? AppContext.BaseDirectory;
 		}
 	}
 
@@ -29,7 +29,7 @@ public class Backend : IDisposable
 		{
 			return environmentVariable;
 		}
-		string text = Path.Combine(AppDir, "runtime", "python.exe");
+		string text = System.IO.Path.Combine(AppDir, "runtime", "python.exe");
 		if (File.Exists(text))
 		{
 			return text;

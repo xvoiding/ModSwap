@@ -949,7 +949,7 @@ public class Viewer3D
 		double num3 = Math.Sin(az);
 		double num4 = Math.Cos(az);
 		Vector3D val = default(Vector3D);
-		(val)._002Ector(num3 * num, num2, num4 * num);
+		val = new Vector3D(num3 * num, num2, num4 * num);
 		((ProjectionCamera)cam).Position = new Point3D((target).X + (val).X * dist, (target).Y + (val).Y * dist, (target).Z + (val).Z * dist);
 		((ProjectionCamera)cam).LookDirection = -val;
 		((ProjectionCamera)cam).UpDirection = new Vector3D((0.0 - num3) * num2, num, (0.0 - num4) * num2);
@@ -1114,9 +1114,9 @@ public class Viewer3D
 					double num5 = Math.Sin(az);
 					double num6 = Math.Cos(az);
 					Vector3D val = default(Vector3D);
-					(val)._002Ector(num6, 0.0, 0.0 - num5);
+					val = new Vector3D(num6, 0.0, 0.0 - num5);
 					Vector3D val2 = default(Vector3D);
-					(val2)._002Ector((0.0 - num5) * num4, num3, (0.0 - num6) * num4);
+					val2 = new Vector3D((0.0 - num5) * num4, num3, (0.0 - num6) * num4);
 					double num7 = dist * 0.0016;
 					target = new Point3D((target).X + ((0.0 - (val).X) * num + (val2).X * num2) * num7, (target).Y + ((0.0 - (val).Y) * num + (val2).Y * num2) * num7, (target).Z + ((0.0 - (val).Z) * num + (val2).Z * num2) * num7);
 				}

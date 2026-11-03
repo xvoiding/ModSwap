@@ -212,3 +212,7 @@ Making the app stop doing this needs a change in its C# (see `ui-recovered/`).
 **More for SpongeBob-style games.** A mesh package whose SkeletalMesh is not export 0 (characters with face morph targets have extra MorphTarget exports) is now
 recognised (before only export 0 was checked, which would drop exactly such characters). Main/player characters are listed first, props last, and `_mesh` is
 dropped from names. Not confirmed against the game's files. Also found in the layout report: `SK_Fish_Beach_01` has cloth data, which the reader still refuses.
+
+**ModSwap.exe is rebuilt (2.14.0).** Its source is now in `ui-recovered/` (see `RECOVERY.md`). The only behaviour change: a game is never greyed out "for good" after one error
+(the `broken.txt` list is gone). Everything else matches the old exe (same methods, same text, same window layouts), but this build has not been started on Windows yet.
+The previous exe is still in git history: `git checkout fc67f9e -- ModSwap.exe`.
