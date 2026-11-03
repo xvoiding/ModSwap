@@ -1,0 +1,17 @@
+model file found: C:\Users\xavie\Downloads\mario\0RJNWRF531XBTNNR38IJ74PTS.obj
+files copied side by side (like dropping them into the app): 0RJNWRF531XBTNNR38IJ74PTS.obj, texture.jpeg
+obj: mtllib 0RJNWRF531XBTNNR38IJ74PTS.mtl
+obj: g Object_TexMap_0
+obj: usemtl TexMap
+model: C:\Users\xavie\AppData\Local\Temp\modswap_diag_e4xx2sdc\0RJNWRF531XBTNNR38IJ74PTS.obj
+vertices 5089, triangles 8066, materials 1, parts 0, up axis +Y
+UV range: u 0.007 .. 1.000, v 0.002 .. 0.998  (outside 0..1 means the texture is tiled / mirrored)
+triangles whose corners belong to different materials: 0 (must be 0)
+
+#   material                     picture      average colour   vertices  tris      uv range of this material
+0   TexMap                       2048x2048    (102, 60, 78)    5089      8066      u 0.01..1.00 v 0.00..1.00
+
+atlas 1024: 49 of 5089 vertices find a different colour than their own picture (0 is right)
+atlas 2048: 11 of 5089 vertices find a different colour than their own picture (0 is right)
+
+verdict: the atlas is consistent with the model; if the viewer still looks wrong the cause is elsewhere. Look at orientations.png: if one tile looks right, your picture is turned relative to its uvs.
