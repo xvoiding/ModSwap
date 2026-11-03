@@ -69,21 +69,48 @@ def cmd_install(a):
     m = load_model(a.model, a.textures)
     print('model: %d vertices, %d triangles, %d textures' % (len(m.pos), len(m.tris), sum(i is not None for i in m.images)))
     adj = dict(width=a.width, height=a.height, depth=a.depth, yaw=a.yaw, pitch=a.pitch, roll=a.roll, dx=a.dx, dy=a.dy, dz=a.dz)
-    fitted = S.fit(orig, m, up=a.up or getattr(m, 'up', '+Y'), forward=a.forward, scale=a.scale, adjust=adj)
+    fitted = S.fit(orig, m, up=a.up or getattr(m, 'up', '+Y'), forward=a.forward, scale=a.scale, adjust=adj, atlas_size=a.tex_size)
     asset, atlas = S.build(orig, fitted, slot, uv_flip_v=a.flip_v)
-    if a.atlas_out: atlas_img = __import__('PIL.Image', fromlist=['Image']).fromarray(atlas); atlas_img.save(a.atlas_out); print('texture picture written to', a.atlas_out)
-    if a.dry_run: open(a.dry_run, 'wb').write(asset); print('dry run: wrote %s (%d bytes); nothing installed' % (a.dry_run, len(asset))); toc.close(); return
+    if a.atlas_out: __import__('PIL.Image', fromlist=['Image']).fromarray(atlas).save(a.atlas_out); print('texture picture written to', a.atlas_out)
+    items = [(path, asset)]
+    if not a.no_textures:
+        for role, rgba in textures_for(toc, I.ad, rows, slot, atlas): items.append(rgba)
+        print('textures: colour %dx%d (BC7) + flat normal + neutral gloss written' % (atlas.shape[1], atlas.shape[0]))
+    if a.dry_run:
+        open(a.dry_run, 'wb').write(asset)
+        for k, (tp, data) in enumerate(items[1:]): open('%s.%s' % (a.dry_run, os.path.basename(tp)), 'wb').write(data)
+        print('dry run: wrote %s (%d bytes) + %d texture file(s); nothing installed' % (a.dry_run, len(asset), len(items) - 1)); toc.close(); return
     name = a.name or os.path.splitext(os.path.basename(a.model))[0]
     mid = hashlib.md5(('%s|%s|%s' % (a.suit, name, time.time())).encode()).hexdigest()[:10]
-    dest = I.install(mid, path, asset, name)
-    print('installed "%s" over suit %s (%s)\nTEXTURES: not replaced yet, so the suit keeps its own picture with your model\'s UVs on it (looks scrambled) until texture support lands.' % (name, a.suit, dest))
+    I.install_group(mid, items, name)
+    print('installed "%s" over suit %s: model%s' % (name, a.suit, '' if a.no_textures else ' + 3 textures'))
     print('undo with:  python -m modswap spiderman restore'); toc.close()
+
+
+def textures_for(toc, ad, rows, slot, atlas):
+    """-> [(role, (texture path, new asset bytes))] replacing the slot's colour / normal / gloss textures: your picture, a flat normal map, a neutral gloss map"""
+    from . import texture as TX
+    r = next(x for x in rows if x['slot'] == slot); out = []
+    neutral = {'c': None, 'n': (127, 127, 0, 255), 'g': (36, 56, 255, 255)}
+    for role in 'cng':
+        path = next((t for t in r['textures'] if t.lower().endswith('_%s.texture' % role)), None)
+        if path is None: continue
+        i = toc.find(path)
+        if i is None: raise SystemExit('this game has no texture %s' % path)
+        tpl = TX.Texture(toc.read(i, ad))
+        out.append((role, (path, TX.write_like(tpl, atlas) if role == 'c' else TX.flat(tpl, neutral[role]))))
+    return out
 
 
 def cmd_list(a):
     mods = _install(a).installed()
     if not mods: print('nothing installed by ModSwap')
-    for m in mods: print('%-12s %-24s %-60s %.1f MB' % (m['id'], m['name'][:24], m['target'], m['size'] / 1e6))
+    seen = set()
+    for m in mods:
+        g = m.get('group', m['id'])
+        if g in seen: continue
+        seen.add(g); parts = [x for x in mods if x.get('group', x['id']) == g]
+        print('%-12s %-24s %d file(s), %.1f MB   (%s)' % (g, m['name'][:24], len(parts), sum(x['size'] for x in parts) / 1e6, parts[0]['target']))
 
 
 def cmd_uninstall(a):
@@ -106,6 +133,7 @@ def add_parser(sp):
     i = t.add_parser('install'); i.add_argument('--suit', default='classic'); i.add_argument('--model', required=True); i.add_argument('--textures'); i.add_argument('--name')
     i.add_argument('--material', type=int, help='material slot for every part (default: detected)'); i.add_argument('--up'); i.add_argument('--forward'); i.add_argument('--scale', type=float, default=1.0)
     i.add_argument('--flip-v', action='store_true', help='flip the texture picture upside down'); i.add_argument('--atlas-out', help='save the combined texture picture here')
+    i.add_argument('--tex-size', type=int, default=1024, help='size of the colour texture, 512 / 1024 / 2048 (default 1024)'); i.add_argument('--no-textures', action='store_true', help='only the model (the suit keeps its own picture)')
     i.add_argument('--dry-run', metavar='OUT.model', help='build the model, write it to this file, install nothing')
     i.add_argument('--yaw', type=float, default=0.0); i.add_argument('--pitch', type=float, default=0.0); i.add_argument('--roll', type=float, default=0.0)
     for k in ('width', 'height', 'depth'): i.add_argument('--' + k, type=float, default=1.0)

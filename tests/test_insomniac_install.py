@@ -68,6 +68,19 @@ def test_clear_errors():
     except ValueError as e: assert 'toc.BAK is missing' in str(e)
 
 
+def test_group_installs_several_assets_and_uninstalls_together():
+    g, blobs, ad = game(); inst = I.Installer(g); inst.install_group('grp', [(MODEL, b'MODEL-NEW'), (BASE, b'BASE-NEW')], 'Granny')
+    t = Toc.open(ad); assert t.read(t.find(MODEL), ad) == b'MODEL-NEW' and t.read(t.find(BASE), ad) == b'BASE-NEW'
+    assert sorted(m['group'] for m in inst.installed()) == ['grp', 'grp'] and len(os.listdir(os.path.join(ad, 'mods'))) == 2
+    inst.install_group('grp2', [(MODEL, b'M2')]); t = Toc.open(ad)                                        # same target again: replaced, the other asset stays
+    assert t.read(t.find(MODEL), ad) == b'M2' and t.read(t.find(BASE), ad) == b'BASE-NEW'
+    inst.uninstall('grp'); t = Toc.open(ad); assert t.read(t.find(BASE), ad) == blobs['base'] and t.read(t.find(MODEL), ad) == b'M2'
+    inst.uninstall('grp2'); assert inst.installed() == [] and os.listdir(os.path.join(ad, 'mods')) == []
+    try: inst.install_group('x', [(MODEL, b'a'), ('no/such.texture', b'b')]); raise AssertionError('missing target')
+    except KeyError: pass
+    assert inst.installed() == [], 'a failed group install must change nothing'
+
+
 def test_suit_probe():
     g, blobs, ad = game(); t = Toc.open(ad); assert I.find_suits(t) == ['classic', 'base']
     assert I.suit_model_path('noir') == 'characters/hero/hero_spiderman_noir/hero_spiderman_noir.model'

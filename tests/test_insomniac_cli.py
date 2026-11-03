@@ -6,7 +6,7 @@ from modswap.insomniac.toc import Toc
 from test_insomniac_toc import build_toc
 from humanoid_fixture import humanoid
 
-SAMPLES = os.environ.get('SPIDERMAN_ASSETS', '/tmp/sm2/assets')
+SAMPLES = next((p for p in (os.environ.get('SPIDERMAN_ASSETS'), '/tmp/s4/x/assets', '/tmp/sm2/assets') if p and os.path.isfile(os.path.join(p, 'A816085E5C2AFAEB.bin'))), '/tmp/sm2/assets')
 MODEL = 'characters/hero/hero_spiderman_classic/hero_spiderman_classic.model'
 
 
@@ -51,9 +51,14 @@ def test_dry_run_install_restore_roundtrip():
     assert 'nothing installed' in out and os.path.isfile(out_model) and os.path.isfile(png) and sha(os.path.join(ad, 'toc')) == before, out
     M.Model(open(out_model, 'rb').read())                                                      # re-reads cleanly
     out = run('spiderman', '--dir', g, 'install', '--suit', 'classic', '--model', 'x.fbx', '--forward', '+Z', '--name', 'Test')
-    assert 'installed "Test"' in out and 'TEXTURES: not replaced yet' in out, out
+    assert 'installed "Test"' in out and '+ 3 textures' in out, out
     assert 'Test' in run('spiderman', '--dir', g, 'list')
+    from modswap.insomniac import texture as TX
     t = Toc.open(ad); data = t.read(t.find(MODEL), ad); M.Model(data)
+    rub = 'characters/hero/hero_spiderman_classic/textures/hero_spiderman_classic_rubber_%s.texture'
+    tc = TX.Texture(t.read(t.find(rub % 'c'), ad)); assert (tc.width, tc.height, tc.fmt) == (1024, 1024, 99) and tc.mips == 8, 'colour texture replaced by the 1024 picture'
+    tn = TX.Texture(t.read(t.find(rub % 'n'), ad)); assert tuple(tn.decode(0)[0, 0]) == (127, 127, 0, 255)
+    assert len(os.listdir(os.path.join(ad, 'mods'))) == 4 and 'Test' in run('spiderman', '--dir', g, 'list')
     assert t.archive_name(t.find(MODEL)).startswith('mods\\') and len(M.Model(data).meshes()) == len(M.Model(open(os.path.join(SAMPLES, 'BF45D48B5314EC76.bin'), 'rb').read()).meshes())
     run('spiderman', '--dir', g, 'restore')
     assert sha(os.path.join(ad, 'toc')) == before and 'nothing installed' in run('spiderman', '--dir', g, 'list')

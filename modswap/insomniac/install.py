@@ -61,8 +61,22 @@ class Installer:
         self._write_toc(toc, mods); self._save(mods); self._clean_unused(mods)
         return os.path.join(self.mods_dir, fn)
 
+    def install_group(self, group_id, items, name=''):
+        """one mod made of several assets: items = [(target path, new bytes)]. Each asset gets its own archive file; uninstalling the group id removes all of them.
+        An asset that already has a ModSwap mod is replaced."""
+        toc = self.original_toc()
+        for path, _ in items:
+            if toc.find(path) is None: raise KeyError('this game has no asset %s' % path)
+        os.makedirs(self.mods_dir, exist_ok=True); targets = {p for p, _ in items}
+        mods = [m for m in self.installed() if m['target'] not in targets and m['id'] != group_id and m.get('group') != group_id]
+        for k, (path, data) in enumerate(items):
+            fn = 'modswap_%s_%d' % (group_id, k)
+            with open(os.path.join(self.mods_dir, fn), 'wb') as f: f.write(data)
+            mods.append(dict(id='%s.%d' % (group_id, k), group=group_id, name=name or group_id, target=path, file=fn, size=len(data)))
+        self._write_toc(toc, mods); self._save(mods); self._clean_unused(mods)
+
     def uninstall(self, mod_id):
-        toc = self.original_toc(); mods = [m for m in self.installed() if m['id'] != mod_id]
+        toc = self.original_toc(); mods = [m for m in self.installed() if m['id'] != mod_id and m.get('group') != mod_id]
         self._write_toc(toc, mods); self._save(mods); self._clean_unused(mods)
 
     def restore(self):
