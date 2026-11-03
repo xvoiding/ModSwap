@@ -351,3 +351,7 @@ Also in the app: Sonic Frontiers is detected as "Hedgehog Engine 2", its swappab
 * `python -m modswap diagnose --model MODEL_FOLDER` also accepts a whole model folder (finds the .fbx / .glb / .obj inside it).
 * `tests/test_fbx_loader.py`: a Mario-like ASCII FBX (3 parts, 3 materials, one shared picture in `textures`, indexed per-corner UVs) checked against ground truth at 1024 and 2048.
 * Still open: the exact cause of the scrambled-Mario viewer screenshot is not reproduced (all the above pass on synthetic models); the diagnose report from the real model decides.
+
+## Repair: "Couldn't start the engine ... not a valid application for this OS platform"
+`runtime\python.exe` (ModSwap's private Python) is damaged or missing (a zero-byte / truncated file, often antivirus or a failed copy). Put `Repair-Runtime.bat` and `Repair-Runtime.ps1` in the ModSwap folder and double-click the
+.bat: it downloads the official embeddable Python 3.12 from python.org, installs pip and everything in `requirements.txt`, and keeps the old folder renamed as `runtime_broken_<time>`.
