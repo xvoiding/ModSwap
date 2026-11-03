@@ -2,3 +2,7 @@ runtime/
 __pycache__/
 *.pyc
 .env
+_games/
+ui-recovered/bin/
+ui-recovered/obj/
+ui-recovered/publish/
