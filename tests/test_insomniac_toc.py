@@ -18,7 +18,7 @@ def build_toc(assets, archives):
     sizes = b''.join(struct.pack('<III', 1, assets[i][3], k) for k, i in enumerate(order))
     places = b''.join(struct.pack('<II', assets[i][1], assets[i][2]) for i in order)
     arch = b''.join(struct.pack('<II', 0, 10000 + k) + a.encode('latin1').ljust(64, b'\0') for k, a in enumerate(archives))
-    secs = [(T.SEC_ARCHIVES, arch), (T.SEC_IDS, ids), (T.SEC_SIZES, sizes), (T.SEC_PLACES, places)]
+    secs = [(T.SEC_IDS, ids), (T.SEC_SIZES, sizes), (T.SEC_PLACES, places), (T.SEC_ARCHIVES, arch)]          # (the real toc ends with the archive table)
     head = 16 + 12 * len(secs); off = head; table = b''; body = b''
     for h, b in secs: table += struct.pack('<III', h, off, len(b)); body += b; off += len(b)
     raw = b'1TAD' + struct.pack('<III', 0x51B8E006, off, len(secs)) + table + body

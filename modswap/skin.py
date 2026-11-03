@@ -12,15 +12,15 @@ import numpy as np
 
 ROLE_PATTERNS = [
     ('pelvis',   r'(^|[^a-z])(pelvis|hips?)($|[^a-z])'),
-    ('spine',    r'spine'),
+    ('spine',    r'spine|chest'),
     ('neck',     r'neck'),
     ('head',     r'(^|[^a-z])head($|[^a-z])'),
     ('clavicle', r'clavicle|shoulder'),
-    ('lowerarm', r'lowerarm|forearm|fore_arm|lower_arm|arm_lower'),
-    ('upperarm', r'upperarm|upper_arm|arm_upper|(^|[^a-z])arm($|[^a-z])'),
-    ('hand',     r'(^|[^a-z])hand($|[^a-z])'),
+    ('lowerarm', r'lowerarm|forearm|fore_arm|lower_arm|arm_lower|loarm|lo_arm'),
+    ('upperarm', r'upperarm|upper_arm|arm_upper|uparm|up_arm|(^|[^a-z])arm($|[^a-z])'),
+    ('hand',     r'(^|[^a-z])hand($|[^a-z])|(^|[^a-z])wrist($|[^a-z])'),
     ('thigh',    r'thigh|upleg|up_leg|upperleg|upper_leg'),
-    ('calf',     r'calf|lowerleg|lower_leg|shin|(^|[^a-z])leg($|[^a-z])'),
+    ('calf',     r'calf|lowerleg|lower_leg|shin|loleg|lo_leg|(^|[^a-z])leg($|[^a-z])'),
     ('foot',     r'(^|[^a-z])foot($|[^a-z])'),
 ]
 
@@ -32,8 +32,8 @@ def snake(name):
 
 def side_of(name):
     n = snake(name)
-    if re.search(r'(^|[_.\-:\s])l($|[_.\-\s])|left', n): return 'L'
-    if re.search(r'(^|[_.\-:\s])r($|[_.\-\s])|right', n): return 'R'
+    if re.search(r'(^|[_.\-:\s])(l|lf)($|[_.\-\s])|left', n): return 'L'
+    if re.search(r'(^|[_.\-:\s])(r|rt)($|[_.\-\s])|right', n): return 'R'
     return 'C'
 
 
@@ -42,7 +42,7 @@ def classify(names):
     out = {}
     for i, n in enumerate(names):
         low = snake(n)
-        if re.search(r'index|middle|ring|pinky|thumb|finger|twist|(^|[^a-z])ik($|[^a-z])|ik_|_ik|corrective|helper|weapon|ball|toe|end$|(^|[^a-z])root$|^root', low): continue
+        if re.search(r'index|middle|ring|pinky|thumb|finger|twist|(^|[^a-z])ik($|[^a-z])|ik_|_ik|corrective|helper|weapon|ball|toe|end$|(^|[^a-z])root$|^root|bind_?\d|_bind|deform|latissimus|scapula|spiderleg|web|buttock|upknee|(^|_)m_?j$|^sync$|^a_body$|^mid$|attach', low): continue
         for role, pat in ROLE_PATTERNS:
             if re.search(pat, low):
                 out[i] = (role, side_of(n)); break

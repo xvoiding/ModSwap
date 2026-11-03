@@ -1,0 +1,90 @@
+"""Install / remove Spider-Man Remastered mods. The game reads every asset through asset_archive/toc, so a mod is:
+    - a plain archive file asset_archive/mods/<id> holding the new asset bytes, and
+    - a toc whose entry for the replaced asset points at that file (the file is appended to the toc's archive list).
+The ORIGINAL toc is kept as asset_archive/toc.BAK and the toc is always rebuilt from it plus the mods that are installed, so removing a mod, or all of them, puts the
+game back exactly (the .BAK is not touched again). A small state file asset_archive/modswap_mods.json lists what ModSwap installed.
+"""
+import os, json, shutil
+from .toc import Toc, patched_raw, to_file_bytes, path_id
+
+SUIT_WORDS = ['classic', 'advanced', 'advanced2', 'advanced_2', 'noir', 'punk', 'spiderpunk', 'scarlet', 'scarlet2', 'scarlet_2', 'stealth', 'iron', 'ironspider', 'iron_spider',
+              'crimson', 'negative', 'velocity', 'vintage', 'secret_war', 'secretwar', 'fear_itself', 'fearitself', 'electric', 'webwarrior', 'web_warrior', 'upgraded', 'spirit',
+              'anti_ock', 'antiock', 'homemade', 'ultimate', 'ps4', 'ps4_advanced', 'miles', 'base', 'undies', 'arachnid', 'spider_clan', 'spiderclan', 'dark', 'bodyguard']
+
+
+def suit_model_path(suit): return 'characters/hero/hero_spiderman_%s/hero_spiderman_%s.model' % (suit, suit)
+
+
+def find_suits(toc, extra=()):
+    """suit ids whose model exists in this toc (ids are hashes of paths, so a list of likely names is tried; only real hits are returned)"""
+    return [w for w in dict.fromkeys(list(SUIT_WORDS) + list(extra)) if toc.find(suit_model_path(w)) is not None]
+
+
+class Installer:
+    def __init__(self, game_dir):
+        self.ad = os.path.join(game_dir, 'asset_archive')
+        if not os.path.isfile(os.path.join(self.ad, 'toc')): raise ValueError('no asset_archive\\toc in %s: is this the Marvel\'s Spider-Man Remastered folder?' % game_dir)
+        self.toc_path = os.path.join(self.ad, 'toc'); self.bak = os.path.join(self.ad, 'toc.BAK')
+        self.mods_dir = os.path.join(self.ad, 'mods'); self.state_path = os.path.join(self.ad, 'modswap_mods.json')
+
+    # ---- state
+    def installed(self):
+        try: return json.load(open(self.state_path))['mods']
+        except Exception: return []
+
+    def _save(self, mods): json.dump(dict(mods=mods), open(self.state_path, 'w'), indent=1)
+
+    def original_toc(self):
+        """the original toc (toc.BAK), made from the current toc the first time"""
+        if not os.path.isfile(self.bak):
+            if self.installed(): raise ValueError('mods are recorded as installed but toc.BAK is missing: verify the game files in Steam before installing')
+            shutil.copy2(self.toc_path, self.bak)
+        return Toc(open(self.bak, 'rb').read())
+
+    # ---- actions
+    def read_original(self, path, toc=None):
+        """the ORIGINAL bytes of the asset at `path` (from the .BAK toc, whatever mods are installed)"""
+        toc = toc or self.original_toc(); i = toc.find(path)
+        if i is None: raise KeyError('this game has no asset %s' % path)
+        try: return toc.read(i, self.ad)
+        finally: toc.close()
+
+    def install(self, mod_id, target_path, data, name=''):
+        """put `data` (a new asset) in place of the asset at `target_path`. Installing for a target that already has a ModSwap mod replaces that mod."""
+        toc = self.original_toc(); i = toc.find(target_path)
+        if i is None: raise KeyError('this game has no asset %s' % target_path)
+        os.makedirs(self.mods_dir, exist_ok=True)
+        mods = [m for m in self.installed() if m['target'] != target_path and m['id'] != mod_id]
+        fn = 'modswap_%s' % mod_id
+        with open(os.path.join(self.mods_dir, fn), 'wb') as f: f.write(data)
+        mods.append(dict(id=mod_id, name=name or mod_id, target=target_path, file=fn, size=len(data)))
+        self._write_toc(toc, mods); self._save(mods); self._clean_unused(mods)
+        return os.path.join(self.mods_dir, fn)
+
+    def uninstall(self, mod_id):
+        toc = self.original_toc(); mods = [m for m in self.installed() if m['id'] != mod_id]
+        self._write_toc(toc, mods); self._save(mods); self._clean_unused(mods)
+
+    def restore(self):
+        """the game exactly as it was: original toc back, every ModSwap mod file removed"""
+        if os.path.isfile(self.bak):
+            tmp = self.toc_path + '.tmp'; shutil.copy2(self.bak, tmp); os.replace(tmp, self.toc_path)
+        self._save([]); self._clean_unused([])
+
+    # ---- internals
+    def _write_toc(self, toc, mods):
+        redirects = {}; names = []
+        for k, m in enumerate(mods):
+            names.append('mods\\' + m['file']); redirects[toc.find(m['target'])] = (len(toc.archives) + k, 0, m['size'])
+        raw = patched_raw(toc, redirects, names); tmp = self.toc_path + '.tmp'
+        with open(tmp, 'wb') as f: f.write(to_file_bytes(raw))
+        try: os.replace(tmp, self.toc_path)
+        except PermissionError: os.remove(tmp); raise PermissionError('Windows would not let ModSwap change asset_archive\\toc: close the game and try again')
+
+    def _clean_unused(self, mods):
+        keep = {m['file'] for m in mods}
+        if not os.path.isdir(self.mods_dir): return
+        for f in os.listdir(self.mods_dir):
+            if f.startswith('modswap_') and f not in keep:
+                try: os.remove(os.path.join(self.mods_dir, f))
+                except OSError: pass

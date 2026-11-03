@@ -112,3 +112,35 @@ class Toc:
                 i = self.find(cand)
                 if i is not None and i not in skip: found.setdefault(i, cand); break
         return found
+
+
+# ------------------------------------------------------------------------------------------------ writing
+def patched_raw(toc, redirects=None, new_archives=()):
+    """The decompressed DAT1 block of `toc` with changes applied:
+      redirects     {asset number: (archive number, offset, size)}   -> the asset is now read from there
+      new_archives  names ('mods\\x') appended to the archive table (they get numbers len(archives), +1, ...)
+    Only the sections that change are touched; the archive table is the last section, so appending to it moves nothing else."""
+    raw = bytearray(toc.raw)
+    ao, asz = toc.sections[SEC_ARCHIVES]
+    if ao + asz != len(raw): raise ValueError('the archive table is not the last section of this toc: cannot append to it safely')
+    so, _ = toc.sections[SEC_SIZES]; po, _ = toc.sections[SEC_PLACES]
+    for i, (arch, off, size) in (redirects or {}).items():
+        if not 0 <= i < toc.count: raise ValueError('no asset number %d' % i)
+        struct.pack_into('<I', raw, so + 12 * i + 4, size)                       # size
+        struct.pack_into('<II', raw, po + 8 * i, arch, off)                      # archive number, offset
+    n = len(toc.archives)
+    for k, name in enumerate(new_archives):
+        e = struct.pack('<II', 0, 10000 + n + k) + name.encode('latin1')[:63].ljust(64, b'\0'); raw += e
+    if new_archives:
+        # section table entry of the archive table: size grows; DAT1 total (bytes 8..11) grows
+        count = struct.unpack_from('<I', raw, 12)[0]
+        for i in range(count):
+            tag, off, sz = struct.unpack_from('<III', raw, 16 + 12 * i)
+            if tag == SEC_ARCHIVES: struct.pack_into('<I', raw, 16 + 12 * i + 8, sz + 72 * len(new_archives))
+        struct.pack_into('<I', raw, 8, len(raw))
+    return bytes(raw)
+
+
+def to_file_bytes(raw, level=9):
+    """toc file bytes from a decompressed DAT1 block"""
+    return struct.pack('<II', MAGIC, len(raw)) + zlib.compress(raw, level)
