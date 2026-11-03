@@ -343,3 +343,11 @@ Also in the app: Sonic Frontiers is detected as "Hedgehog Engine 2", its swappab
   (the atlas with every material's cell outlined) and one preview picture per material. Use it when a model's textures look wrong in the viewer.
 * The viewer-only reduction for huge meshes (2.16.1) now keeps vertices of different atlas regions apart (`viewerlod.labels_from_uv`), so a reduced triangle can never mix corners from different
   materials / UV islands and smear the texture over the model. Test: two texture regions on a big sphere, no reduced triangle spans both.
+
+## 2.16.3 - textures: pictures in nearby folders, one cell for a shared picture
+* The FBX loader looks for a material's picture by exact file name in the model's folder, its sub-folders and the sub-folders of the parent folder (`source\\model.fbx` + `textures\\x.jpeg`), not just next to the model.
+* Materials that use the SAME picture (very common: one atlas texture for a whole character) now share ONE cell in the preview / build atlas (`atlas.pack`), so a model with twenty materials and one
+  2048 texture keeps that texture at full detail instead of twenty shrunken copies.
+* `python -m modswap diagnose --model MODEL_FOLDER` also accepts a whole model folder (finds the .fbx / .glb / .obj inside it).
+* `tests/test_fbx_loader.py`: a Mario-like ASCII FBX (3 parts, 3 materials, one shared picture in `textures`, indexed per-corner UVs) checked against ground truth at 1024 and 2048.
+* Still open: the exact cause of the scrambled-Mario viewer screenshot is not reproduced (all the above pass on synthetic models); the diagnose report from the real model decides.

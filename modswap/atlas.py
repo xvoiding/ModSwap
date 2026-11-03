@@ -38,8 +38,28 @@ def uv_extents(uv, mat, n_mats, pad_frac=0.004):
     return out
 
 
+def _same_picture_groups(images):
+    """-> (group index per material, number of groups): materials whose pictures are pixel-identical share one group (many models use ONE texture for all their materials)"""
+    import hashlib
+    seen = {}; grp = []
+    for im in images:
+        key = (im.size, im.mode, hashlib.md5(im.tobytes()).hexdigest()); grp.append(seen.setdefault(key, len(seen)))
+    return np.array(grp, np.int64), len(seen)
+
+
 def pack(images, uv, mat, size=2048, gutter=4):
-    """images: list of PIL images (index == material id). Returns (atlas RGB uint8 HxWx3, [Cell])."""
+    """images: list of PIL images (index == material id). Returns (atlas RGB uint8 HxWx3, [Cell] per material). Materials that use the SAME picture share one cell, so a model with
+    twenty materials and one 2048 texture gets that texture once, not twenty times shrunk."""
+    grp, ng = _same_picture_groups(images)
+    if ng < len(images):
+        first = {}
+        for i, g in enumerate(grp): first.setdefault(int(g), i)
+        atl, gcells = _pack_distinct([images[first[g]] for g in range(ng)], uv, np.asarray(grp)[np.asarray(mat)], size, gutter)
+        return atl, [gcells[int(g)] for g in grp]
+    return _pack_distinct(images, uv, mat, size, gutter)
+
+
+def _pack_distinct(images, uv, mat, size=2048, gutter=4):
     n = len(images)
     ext = uv_extents(uv, mat, n)
     # desired cell size at 1:1 texel density

@@ -1,4 +1,4 @@
-"""python -m modswap diagnose --model my.fbx [--textures FOLDER] [--out report_folder]
+"""python -m modswap diagnose --model my.fbx|MODEL_FOLDER [--textures FOLDER] [--out report_folder]
 
 Loads a model exactly like the app does and checks, material by material, that every vertex finds the right colour in the texture atlas the viewer / the builds use. Writes
 diagnose_report.txt plus atlas_1024.png (the atlas with each material's cell outlined) and one preview_<material>.png per material (the picture it was given)."""
@@ -14,9 +14,23 @@ def sample(im, uv):
     return a[np.minimum((v * h).astype(int), h - 1), np.minimum((u * w).astype(int), w - 1)]
 
 
+def find_model(folder):
+    """the model file inside a folder (any depth): fbx first, then glb / gltf / obj ... ; among several of one kind the biggest"""
+    from .modelio import MODEL_EXT
+    order = ('.fbx', '.glb', '.gltf', '.obj', '.dae', '.vrm', '.blend', '.ply', '.stl', '.3mf', '.off'); found = []
+    for dp, dn, fs in os.walk(folder):
+        for f in fs:
+            e = os.path.splitext(f)[1].lower()
+            if e in MODEL_EXT: found.append((order.index(e) if e in order else 99, -os.path.getsize(os.path.join(dp, f)), os.path.join(dp, f)))
+    if not found: raise SystemExit('no model file (.fbx .glb .obj ...) found inside %s' % folder)
+    return sorted(found)[0][2]
+
+
 def run(model_path, texture_dir=None, out=None, log=print):
     out = out or os.getcwd(); os.makedirs(out, exist_ok=True); L = []
     def say(s=''): L.append(s); log(s)
+    if os.path.isdir(model_path):
+        folder = model_path; model_path = find_model(folder); texture_dir = texture_dir or folder; say('model file found: %s' % model_path)
     m = load_model(model_path, texture_dir)
     say('model: %s' % model_path); say('vertices %d, triangles %d, materials %d, parts %d, up axis %s' % (len(m.pos), len(m.tris), len(m.mat_names), len(m.part_names), m.up))
     say('UV range: u %.3f .. %.3f, v %.3f .. %.3f  (outside 0..1 means the texture is tiled / mirrored)' % (m.uv[:, 0].min(), m.uv[:, 0].max(), m.uv[:, 1].min(), m.uv[:, 1].max()))

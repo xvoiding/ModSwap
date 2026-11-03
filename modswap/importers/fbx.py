@@ -199,11 +199,30 @@ def _pick(layer, corner, vert, poly):
     return vals[np.minimum(sel, len(vals) - 1)]
 
 
+def _near_dirs(dirs, depth=3, limit=4000):
+    """the given folders, then their sub-folders and the sub-folders of their parent (a model in 'source' with its pictures in a sibling 'textures' folder)"""
+    out = []; seen = set()
+    def add(d):
+        d = os.path.abspath(d)
+        if d not in seen and os.path.isdir(d): seen.add(d); out.append(d)
+    for d in dirs:
+        if d: add(d)
+    n = 0
+    for d in [x for x in dirs if x]:
+        for root in (os.path.abspath(d), os.path.dirname(os.path.abspath(d))):
+            if len(root) < 4: continue                                         # never walk a whole drive
+            base = root.count(os.sep)
+            for dp, dn, _ in os.walk(root):
+                if dp.count(os.sep) - base >= depth: dn[:] = []
+                add(dp); n += 1
+                if n > limit: break
+    return out
+
+
 def _find_image(cands, dirs):
     from PIL import Image
     names = [os.path.basename(str(c).replace('\\', '/')) for c in cands if c]
-    for d in dirs:
-        if not d or not os.path.isdir(d): continue
+    for d in _near_dirs(dirs):
         low = {f.lower(): f for f in os.listdir(d)}
         for n in names:
             if n.lower() in low:
