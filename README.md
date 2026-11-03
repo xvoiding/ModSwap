@@ -381,3 +381,9 @@ The game's index stores only hashes of asset paths, so ModSwap lists a character
 models that exist show up): suits at `characters/hero/hero_spiderman_<id>/`, other characters (Mr. Negative, Kingpin, Rhino ...) at `characters/npc/npc_<id>/`. Suits whose material is not the plain
 "colour + normal + gloss" kind fall back to their most-used material that has its own colour texture. `python -m modswap spiderman report [--suit punk] [--npcs]` writes `suits_report.txt`
 (mesh table, materials, textures of every suit) for diagnosing a suit that looks wrong.
+
+### Unity: models that lie down, and 2018+ vertex layout
+* `modswap/unity/orient.py` finds which way is up for a Unity model: the rotation on its GameObject chain (a z-up export carries a -90 degree turn that stands it up in the game), checked against the
+  skeleton for characters (head above feet). The viewer draws the model standing and the builder writes the new mesh back into the mesh's own space (rotation + the mesh GameObject's matrix).
+* `patch.set_mesh` writes the vertex data in the layout of the game's Unity version: 8 channels (<= 2017, uv0 = channel 3) or 14 (2018+, tangent 2, uv0 4, blend weights 12, bone indices 13).
+  Writing the old layout into a newer game put the uvs in the colour channel, so custom textures never showed (Megabonk).

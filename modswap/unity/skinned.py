@@ -5,7 +5,7 @@ Coordinates: the viewer/rig frame is X = left, Y = forward, Z = up, cm (fit.to_c
 import numpy as np
 from PIL import Image
 from .. import skin, edit, atlas
-from . import mesh as umesh, patch, fit as ufit, skinscan
+from . import mesh as umesh, patch, fit as ufit, skinscan, orient
 
 ADJ = ('width', 'height', 'depth', 'yaw', 'pitch', 'roll', 'dx', 'dy', 'dz', 'match_pose')
 
@@ -36,17 +36,22 @@ def character(P, m):
         try: pos, tris = umesh.read_geometry(O2[it['mesh'][1]])
         except Exception: continue
         PP.append(np.asarray(pos, np.float64)); TT.append(np.asarray(tris) + off); off += len(pos)
-    hu = float(max(np.ptp(np.concatenate(PP)[:, 1]) if PP else 0, span_u))
+    # which way is up: the rotation on the renderer's GameObject chain (e.g. -90 degrees for a z-up export), checked against the skeleton (the head must be above the feet)
+    try: Rt = orient.world_rotation(orient.transform_table(OL), OL[s['pid']].read().m_GameObject.path_id)
+    except Exception: Rt = np.eye(3)
+    R, how = orient.choose(Rt, names, heads_u, skin.classify)
+    span_u = float(np.ptp(heads_u @ R.T, axis=0)[1])                                       # (heights are measured along the STANDING up axis)
+    hu = float(max(np.ptp(np.concatenate(PP) @ R.T, axis=0)[1] if PP else 0, span_u))
     if hu > 0: k = float(np.clip(10 ** round(np.log10(hu / 1.7)), 1e-3, 1e3))       # some games author their models in cm (Granny is ~110 units tall): bring every character to a ~170 "cm" scale
-    heads = ufit.to_char(heads_u, k)
-    if PP: opos = ufit.to_char(np.concatenate(PP), k); otris = np.concatenate(TT)
+    heads = ufit.to_char(heads_u, k, R)
+    if PP: opos = ufit.to_char(np.concatenate(PP), k, R); otris = np.concatenate(TT)
     else:                                       # could not decode the original meshes: use the skeleton for the size, and draw no outline
         span = heads[:, 2].max() - heads[:, 2].min(); opos = np.array([[0, 0, heads[:, 2].min()], [0, 0, heads[:, 2].max() + 0.14 * span]]); otris = np.zeros((0, 3), np.int64)
     lo, hi = opos.min(0), opos.max(0)
     rig = dict(names=names, parent=parent, head=heads, ref_height=float(hi[2] - lo[2]), ref_min_z=float(lo[2]))
     have = {r for r, _ in skin.classify(names).values()}
     humanoid = bool(('pelvis' in have or 'spine' in have) and ('upperarm' in have or 'thigh' in have) and ('head' in have or 'neck' in have))
-    ch = dict(rig=rig, opos=opos, otris=otris, lo=lo, hi=hi, humanoid=humanoid, k=k)
+    ch = dict(rig=rig, opos=opos, otris=otris, lo=lo, hi=hi, humanoid=humanoid, k=k, R=R, up_from=how)
     cache[key] = ch; return ch
 
 
@@ -103,8 +108,8 @@ def build(P, m, model, params, out_dir, log=print):
     imgs = [im if im is not None else Image.new('RGB', (64, 64), (160, 160, 160)) for im in model.images]
     atl, cells = atlas.pack(imgs, uvs, vm, size=2048)
     uv = atlas.remap_uv(uvs, vm, cells, 2048); uv[:, 1] = 1.0 - uv[:, 1]
-    Pu, Nu, tr = ufit.unity_arrays(pos, nrm, tris, k=character(P, m)['k'])
-    log('rigging the model onto the character\'s skeleton (%d vertices)...' % len(Pu))
+    chr_ = character(P, m); Pu, Nu, tr = ufit.unity_arrays(pos, nrm, tris, k=chr_['k'], R=chr_['R'])
+    log('rigging the model onto the character\'s skeleton (%d vertices; the character stands up along its %s)...' % (len(Pu), chr_['up_from']))
     held = {}; touched = set()
 
     try:

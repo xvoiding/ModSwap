@@ -5,12 +5,15 @@ from .. import skin
 from . import patch
 
 
-def to_char(p, k=1.0):     # unity local (x right, y up, z fwd), metres -> viewer frame cm.  k = unity units per metre (some games author in cm: k = 100)
-    p = np.asarray(p, np.float64); return np.stack([-p[..., 0], p[..., 2], p[..., 1]], -1) * 100.0 / k
+def to_char(p, k=1.0, R=None):     # unity local (x right, y up, z fwd), metres -> viewer frame cm.  k = unity units per metre (some games author in cm: k = 100).  R: the model's own vertex space -> standing (orient.py)
+    p = np.asarray(p, np.float64)
+    if R is not None: p = p @ np.asarray(R, np.float64).T
+    return np.stack([-p[..., 0], p[..., 2], p[..., 1]], -1) * 100.0 / k
 
 
-def to_unity(p, k=1.0):
-    p = np.asarray(p, np.float64) / 100.0 * k; return np.stack([-p[..., 0], p[..., 2], p[..., 1]], -1)
+def to_unity(p, k=1.0, R=None):
+    p = np.asarray(p, np.float64) / 100.0 * k; p = np.stack([-p[..., 0], p[..., 2], p[..., 1]], -1)
+    return p if R is None else p @ np.asarray(R, np.float64)
 
 
 def _rot(yaw, pitch, roll):
@@ -42,8 +45,14 @@ def fit_static(model, lo, hi, up='+Y', forward=None, scale=1.0, adjust=None):
     return P, N, dict(forward=forward, up=up, scale=s, pivot=[float(base[0]), float(base[1]), float(base[2])])
 
 
-def unity_arrays(pos_c, nrm_c, tris, k=1.0):
-    """viewer frame -> unity local arrays with outward winding"""
-    P = to_unity(pos_c, k).astype(np.float32)
-    Nn = np.stack([-nrm_c[:, 0], nrm_c[:, 2], nrm_c[:, 1]], 1).astype(np.float32)
+def unity_arrays(pos_c, nrm_c, tris, k=1.0, R=None, M=None):
+    """viewer frame -> the unity mesh's own local arrays with outward winding. R: the model's own vertex space -> standing (orient.py); M: 4x4 of the mesh's GameObject relative to the top
+    GameObject (its rotation / scale / offset, which the engine applies on top of the vertex data)"""
+    P = to_unity(pos_c, k, R)
+    Nn = np.stack([-nrm_c[:, 0], nrm_c[:, 2], nrm_c[:, 1]], 1)
+    if R is not None: Nn = Nn @ np.asarray(R, np.float64)
+    if M is not None:
+        M = np.asarray(M, np.float64); P = (np.c_[P, np.ones(len(P))] @ np.linalg.inv(M).T)[:, :3]; Nn = Nn @ M[:3, :3]
+        Nn = Nn / (np.linalg.norm(Nn, axis=1, keepdims=True) + 1e-12)
+    P = P.astype(np.float32); Nn = Nn.astype(np.float32)
     return P, Nn, patch.to_unity_tris(P, np.asarray(tris, np.int64))

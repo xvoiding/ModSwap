@@ -71,14 +71,24 @@ def set_mesh(obj, pos, nrm, uv, tris, n_sub=1, skin=None, log=None):
             if log: log('this game\'s Unity version can only draw 65,535 vertices per mesh: your model was reduced from %d to %d vertices' % (n, len(pos)))
             n = len(pos)
     tan = _tangents(pos.astype(np.float64), nrm.astype(np.float64), uv.astype(np.float64), tris).astype(np.float32)
-    data = np.concatenate([pos, nrm, uv, tan, np.ones((n, 1), np.float32)], axis=1).astype('<f4')      # 3+3+2+3+1 = 12 floats = 48 bytes
-    vd = t['m_VertexData']
+    vd = t['m_VertexData']; ch = vd['m_Channels']
+    modern = len(ch) >= 13                                                    # Unity 2018+: 14 channels (pos, normal, TANGENT, color, uv0 ... uv7, blend weights, blend indices); older: 8 (pos, normal, color, UV0, uv1, uv2, uv3, tangent)
+    skin_in_stream = modern and any(int(ch[i].get('dimension', 0) or 0) & 0xF for i in (12, 13) if i < len(ch))      # weights / bone indices live in the vertex data, not in m_Skin
     vd['m_VertexCount'] = n
     if 'm_CurrentChannels' in vd: vd['m_CurrentChannels'] = (1 << 0) | (1 << 1) | (1 << 3) | (1 << 7)
-    ch = vd['m_Channels']
     for i in range(len(ch)): ch[i].update(stream=0, offset=0, format=0, dimension=0)
-    ch[0].update(offset=0, dimension=3); ch[1].update(offset=12, dimension=3); ch[3].update(offset=24, dimension=2)
-    if len(ch) > 7: ch[7].update(offset=32, dimension=4)
+    if modern:
+        cols = [pos, nrm, np.concatenate([tan, np.ones((n, 1), np.float32)], 1), uv]                         # offsets 0, 12, 24, 40
+        ch[0].update(offset=0, dimension=3); ch[1].update(offset=12, dimension=3); ch[2].update(offset=24, dimension=4); ch[4].update(offset=40, dimension=2)
+        if skin is not None and skin_in_stream:
+            bi, bw = np.asarray(skin[0], np.int64), np.asarray(skin[1], np.float64); bw = bw / np.maximum(bw.sum(1, keepdims=True), 1e-9)
+            cols += [bw.astype(np.float32), bi.astype('<i4').view('<f4')]                                    # weights 48, bone indices 64 (SInt32, stored as raw bits)
+            ch[12].update(offset=48, dimension=4, format=0); ch[13].update(offset=64, dimension=4, format=11)
+        data = np.concatenate([np.asarray(c, np.float32).reshape(n, -1) for c in cols], axis=1).astype('<f4')
+    else:
+        data = np.concatenate([pos, nrm, uv, tan, np.ones((n, 1), np.float32)], axis=1).astype('<f4')      # 3+3+2+3+1 = 12 floats = 48 bytes
+        ch[0].update(offset=0, dimension=3); ch[1].update(offset=12, dimension=3); ch[3].update(offset=24, dimension=2)
+        if len(ch) > 7: ch[7].update(offset=32, dimension=4)
     key = 'm_DataSize' if 'm_DataSize' in vd else '_typelessdata'
     vd[key] = data.tobytes()
     idx = tris.astype('<u4' if wide else '<u2').ravel()
@@ -100,7 +110,8 @@ def set_mesh(obj, pos, nrm, uv, tris, n_sub=1, skin=None, log=None):
         bi, bw = np.asarray(skin[0], np.int64), np.asarray(skin[1], np.float64)
         bw = bw / np.maximum(bw.sum(1, keepdims=True), 1e-9)
         sample = (t.get('m_Skin') or [None])[0]
-        if sample is not None and 'weight' in sample:
+        if skin_in_stream: t['m_Skin'] = []
+        elif sample is not None and 'weight' in sample:
             t['m_Skin'] = [dict(weight=[float(x) for x in bw[i]], boneIndex=[int(x) for x in bi[i]]) for i in range(n)]
         else:
             t['m_Skin'] = [{**{'weight[%d]' % k: float(bw[i, k]) for k in range(4)}, **{'boneIndex[%d]' % k: int(bi[i, k]) for k in range(4)}} for i in range(n)]

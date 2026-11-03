@@ -3,7 +3,7 @@ import os, re, io, gc, json, time, shutil, hashlib, zipfile, tempfile
 import numpy as np
 from PIL import Image
 from ..games import library
-from . import scan as uscan, mesh as umesh, patch, fit as ufit, skinned
+from . import scan as uscan, mesh as umesh, patch, fit as ufit, skinned, orient
 
 
 def _sha(p):
@@ -47,7 +47,7 @@ class UnityProject:
         self.dir = os.path.join(cache_root or os.path.join(library.config_dir(), 'cache'), game.id); os.makedirs(self.dir, exist_ok=True)
         self.backup = os.path.join(self.dir, 'backup'); os.makedirs(self.backup, exist_ok=True)
         self.data = uscan.data_dir(game.root)
-        self._env = {}; self._objc = {}; self._geo = {}
+        self._env = {}; self._objc = {}; self._geo = {}; self._rot = {}
 
     # ------------------------------------------------------------ scan
     def scan(self, force=False, log=print):
@@ -106,7 +106,7 @@ class UnityProject:
     def release(self):
         """let go of every asset file we have open (the originals / backups we read from)"""
         for e in list(self._env.values()): _close_env(e)
-        self._env.clear(); self._objc.clear(); self._geo.clear(); gc.collect()
+        self._env.clear(); self._objc.clear(); self._geo.clear(); self._rot.clear(); gc.collect()
 
     # ------------------------------------------------------------ the original model's shape
     def geometry(self, m):
@@ -125,8 +125,16 @@ class UnityProject:
             q = (np.c_[pos.astype(np.float64), np.ones(len(pos))] @ np.array(M).T)[:, :3]
             P.append(q); T.append(tris + off); off += len(pos)
         if not P: raise ValueError('could not read this model\'s meshes')
-        pos = ufit.to_char(np.concatenate(P)); tris = np.concatenate(T)
+        R = orient.snap(orient.world_rotation(orient.transform_table(O), m['top']))        # the rotation that stands the model up in the game (a -90 degree turn on its GameObject, ...)
+        self._rot[key] = R
+        pos = ufit.to_char(np.concatenate(P), 1.0, R); tris = np.concatenate(T)
         res = (pos, tris, pos.min(0), pos.max(0)); self._geo[key] = res; return res
+
+    def orientation(self, m):
+        """-> (R, M of the main mesh relative to the top GameObject): how the main mesh's own vertex space sits in the standing frame"""
+        self.geometry(m); R = self._rot[(m['file'], m['top'])]
+        M = next((np.array(M) for mid, M in m['place'] if mid == m['main']), np.eye(4))
+        return R, M
 
     # ------------------------------------------------------------ build
     def build(self, m, model, params, out_dir, log=print):
@@ -137,7 +145,8 @@ class UnityProject:
         _, _, lo, hi = self.geometry(m)
         pos_c, nrm_c, info = ufit.fit_static(model, lo, hi, up=params.get('up') or model.up, forward=params.get('forward') or None,
                                              scale=float(params.get('scale') or 1.0), adjust=params.get('adjust') or {})
-        P, Nn, tris = ufit.unity_arrays(pos_c, nrm_c, model.tris)
+        R, Mm = self.orientation(m)
+        P, Nn, tris = ufit.unity_arrays(pos_c, nrm_c, model.tris, R=R, M=Mm)
         imgs = [im if im is not None else Image.new('RGB', (64, 64), (160, 160, 160)) for im in model.images]
         atl, cells = atlas.pack(imgs, model.uv, model.vert_mat, size=2048)
         uv = atlas.remap_uv(model.uv, model.vert_mat, cells, 2048); uv[:, 1] = 1.0 - uv[:, 1]
